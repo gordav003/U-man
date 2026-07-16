@@ -1,0 +1,100 @@
+# U-MAN — TSO–DSO Coordination for Voltage and Reactive Power Management
+
+## Overview
+
+This repository supports research conducted in connection with the [CRESYM U-MAN project](https://cresym.eu/u-man/), which investigates coordination between transmission system operators (TSOs) and distribution system operators (DSOs) for voltage control and reactive power management.
+
+Power systems are undergoing a rapid transformation driven by increasing renewable generation, decentralised electricity production, the retirement of conventional synchronous generators, and the growing use of inverter-based resources. These developments reduce traditionally available reactive power flexibility and make secure voltage control more difficult across transmission, sub-transmission, and distribution networks.
+
+The research represented in this repository focuses on identifying and analysing operating conditions in which reactive power exchange, reverse active-power flows, and low network loading contribute to voltage-control problems.
+
+## Motivation
+
+Lightly loaded high-voltage and sub-transmission networks can produce substantial capacitive reactive power and elevated voltages. At the same time, high generation from distributed energy resources may cause reverse power flows from distribution networks towards the transmission system.
+
+These conditions can expose limitations in existing voltage-control mechanisms, including:
+
+- insufficient coordination between transmission and distribution control actions;
+- limited reactive power support from inverter-based resources;
+- restricted or non-automatic operation of transformer tap changers;
+- reduced reactive power capability following the retirement of synchronous generation;
+- insufficient exchange of operational data between TSOs and DSOs;
+- voltage-control actions that solve a local issue while worsening conditions elsewhere in the system.
+
+Effective voltage management therefore requires coordinated use of reactive power resources and voltage-control devices across multiple voltage levels.
+
+## Research Objectives
+
+The main objectives of this research are to:
+
+- assess voltage and reactive power behaviour across 400 kV, 220 kV, 110 kV, and medium-voltage networks;
+- quantify active and reactive power exchange between transmission and distribution systems;
+- investigate correlations between active power, reactive power, voltage, network loading, and operating states;
+- identify substations and network elements with persistent capacitive reactive power behaviour;
+- detect operating conditions associated with elevated voltages and reverse power flows;
+- evaluate the interaction between medium-voltage and high-voltage networks;
+- identify limitations of existing voltage and reactive power control mechanisms;
+- select representative normal, critical, and extreme operating cases for further studies;
+- support the development and validation of coordinated TSO–DSO control strategies.
+
+## Scope of the Study
+
+The work covers the acquisition, preparation, and analysis of operational measurements from several voltage levels. The principal quantities of interest are:
+
+- voltage magnitude;
+- active power;
+- reactive power;
+- transformer operating states and tap positions;
+- direction of power flow;
+- network loading conditions.
+
+Particular attention is given to the following operating situations:
+
+- high capacitive reactive power contribution from 110 kV and neighbouring 220 kV or 400 kV networks;
+- low loading of the 110 kV network;
+- overvoltage conditions in medium-voltage networks;
+- reverse power flow from distribution towards transmission;
+- simultaneous voltage and reactive power issues across several voltage levels;
+- insufficient response from existing voltage-regulation equipment.
+
+## Key Research Questions
+
+The study addresses the following questions:
+
+1. Which substations and network areas contribute most strongly to capacitive reactive power exchange?
+2. Under which loading and generation conditions do critical voltage states occur?
+3. How strongly are voltage variations correlated with active and reactive power flows?
+4. How does operation of the medium-voltage network affect voltage and reactive power conditions at 110 kV?
+5. Which operating states are suitable as representative cases for detailed simulation and control studies?
+6. Which measurements and information exchanges are required for effective TSO–DSO coordination?
+7. Which control actions should remain local, and which require system-level coordination?
+
+## Expected Outcomes
+
+The research is expected to provide:
+
+- a structured overview of voltage and reactive power behaviour across the analysed network;
+- identification and ranking of critical substations and network elements;
+- representative operating cases for simulation and validation;
+- improved understanding of interactions between transmission, sub-transmission, and distribution networks;
+- evidence for defining TSO–DSO information exchange requirements;
+- technical input for coordinated voltage and reactive power control schemes;
+- recommendations for further studies, pilot implementations, and operational improvements.
+
+## Relation to the CRESYM U-MAN Project
+
+The wider U-MAN project investigates coordination frameworks that define the participating actors, system interfaces, required information exchanges, and available control actions. Its objectives include developing and testing multiple coordination schemes, validating them on realistic test systems and pilot implementations, and examining synergies with other services enabled by TSO–DSO coordination.
+
+The project partners listed by CRESYM are ELES, RTE, Swissgrid, IPTO, HEDNO, and NTUA.
+
+This repository represents a focused analytical contribution to that broader research context and should not be interpreted as the official repository of the entire U-MAN project.
+
+## Data Confidentiality
+
+The research may use operational power-system measurements and infrastructure information. Such data can be commercially sensitive or security-relevant. Raw measurements, detailed network models, asset identifiers, and results that reveal operational states should only be published when authorised by the relevant data owner.
+
+## Project Reference
+
+Further information about the wider project is available on the official CRESYM project page:
+
+[https://cresym.eu/u-man/](https://cresym.eu/u-man/)
