@@ -109,6 +109,8 @@ TIME_SERIES_TICK_FONTSIZE = 10
 TIME_SERIES_LEGEND_FONTSIZE = 10
 TIME_SERIES_LINEWIDTH = 1.2
 TIME_SERIES_DATE_INTERVAL_DAYS = 5
+VOLTAGE_Y_PADDING_FRACTION = 0.08
+VOLTAGE_Y_MIN_PADDING_PU = 0.002
 
 # P/Q sign applied to the MV side in comparison plots.
 # Use 1.0 when HV and MV measurements use the same flow orientation.
@@ -147,6 +149,37 @@ def configure_shared_time_axis(ax, start_time, end_time):
         fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE,
     )
     ax.tick_params(axis="x", labelsize=TIME_SERIES_TICK_FONTSIZE)
+
+
+def configure_voltage_axis(ax, voltage_values):
+    """Use a tight data-driven U scale and show only visible reference lines."""
+    values = pd.to_numeric(
+        pd.Series(np.asarray(voltage_values).ravel()),
+        errors="coerce",
+    ).dropna()
+    if values.empty:
+        return
+
+    voltage_min = values.min()
+    voltage_max = values.max()
+    voltage_span = voltage_max - voltage_min
+    padding = max(
+        voltage_span * VOLTAGE_Y_PADDING_FRACTION,
+        VOLTAGE_Y_MIN_PADDING_PU,
+    )
+    y_min = voltage_min - padding
+    y_max = voltage_max + padding
+    ax.set_ylim(y_min, y_max)
+
+    for reference, alpha in ((0.95, 0.35), (1.00, 0.60), (1.05, 0.35)):
+        if y_min <= reference <= y_max:
+            ax.axhline(
+                reference,
+                linestyle="--",
+                linewidth=1.0,
+                color="#2ca02c",
+                alpha=alpha,
+            )
 
 
 def save_figure(fig, out_png: Path):
@@ -674,9 +707,7 @@ def plot_transformer_segment_qu(
             label="U [p.u.]",
             color="#2ca02c",
         )
-        ax_u.axhline(1.00, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.60)
-        ax_u.axhline(0.95, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
-        ax_u.axhline(1.05, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
+        configure_voltage_axis(ax_u, df_seg["U_pu"])
         ax_u.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
     else:
         ax_u.text(
@@ -846,9 +877,7 @@ def plot_transformer_pair_segment(
     if df_seg[["U_HV_pu", "U_MV_pu"]].notna().any().any():
         axes[2].plot(df_seg["time"], df_seg["U_HV_pu"], linewidth=TIME_SERIES_LINEWIDTH, label=f"U HV {hv_kv:g} kV")
         axes[2].plot(df_seg["time"], df_seg["U_MV_pu"], linewidth=TIME_SERIES_LINEWIDTH, label=f"U MV {mv_kv:g} kV")
-        axes[2].axhline(1.00, linestyle="--", linewidth=1.0, alpha=0.60)
-        axes[2].axhline(0.95, linestyle="--", linewidth=1.0, alpha=0.35)
-        axes[2].axhline(1.05, linestyle="--", linewidth=1.0, alpha=0.35)
+        configure_voltage_axis(axes[2], df_seg[["U_HV_pu", "U_MV_pu"]])
         axes[2].legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
     else:
         axes[2].text(0.5, 0.5, "U is not available", transform=axes[2].transAxes, ha="center", va="center")
