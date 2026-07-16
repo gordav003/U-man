@@ -1,27 +1,56 @@
-from pathlib import Path
-import re
-import polars as pl
+import argparse
 import csv
+import re
+from pathlib import Path
+
+import polars as pl
 
 # NASTAVITVE
 
-INPUT_DIR = Path(r"C:\LEON\Projekti\2026\CRESYM-Uman\Uman meritve\2026_06_17  SCADA meritve 4600")
-OUT_DIR = Path(r"C:\LEON\Projekti\2026\CRESYM-Uman\Uman meritve\2026_06_17  SCADA meritve 4600\urejeno\Uman_parquet")
+MODES = (
+    "metadata", "problems", "normalize", "wide",
+    "component_catalog", "component_files",
+)
 
-#MODE = "metadata"
-#MODE = "problems"
-#MODE = "normalize"
-#MODE = "wide"
-#MODE = "component_catalog"
-MODE = "component_files"
 
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Prepare SCADA CSV measurements for U-MAN analysis."
+    )
+    parser.add_argument("input_dir", type=Path, help="Directory containing input CSV files.")
+    parser.add_argument(
+        "-o", "--output-dir", type=Path,
+        help="Output directory (default: INPUT_DIR/urejeno/Uman_parquet).",
+    )
+    parser.add_argument(
+        "--mode", choices=MODES, default="component_files",
+        help="Processing step to run (default: component_files).",
+    )
+    args = parser.parse_args()
+    args.input_dir = args.input_dir.expanduser().resolve()
+    if args.output_dir is None:
+        args.output_dir = args.input_dir / "urejeno" / "Uman_parquet"
+    else:
+        args.output_dir = args.output_dir.expanduser().resolve()
+    return args
 
-METADATA_FILE = OUT_DIR / "metadata_review.csv"
-PARQUET_DIR = OUT_DIR / "parquet_normalized"
-PARQUET_DIR.mkdir(parents=True, exist_ok=True)
-COMPONENT_EXPORT_DIR = OUT_DIR / "component_files"
-COMPONENT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+def configure_paths(input_dir: Path, output_dir: Path) -> None:
+    global INPUT_DIR, OUT_DIR, METADATA_FILE, PARQUET_DIR, COMPONENT_EXPORT_DIR
+
+    INPUT_DIR = input_dir
+    OUT_DIR = output_dir
+    if not INPUT_DIR.is_dir():
+        raise NotADirectoryError(f"Vhodna mapa ne obstaja: {INPUT_DIR}")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    METADATA_FILE = OUT_DIR / "metadata_review.csv"
+    PARQUET_DIR = OUT_DIR / "parquet_normalized"
+    PARQUET_DIR.mkdir(parents=True, exist_ok=True)
+    COMPONENT_EXPORT_DIR = OUT_DIR / "component_files"
+    COMPONENT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+
 EXPORT_ONLY_QST_1 = True
 
 VOLTAGES = ["400", "220", "110", "35", "21", "20", "18", "13", "11", "10", "6", "5"]
@@ -788,14 +817,16 @@ def export_files_per_component():
 
 # ZAGON
 
-if __name__ == "__main__":
+def main() -> None:
+    args = parse_arguments()
+    configure_paths(args.input_dir, args.output_dir)
 
-    if MODE == "metadata":
+    if args.mode == "metadata":
         build_metadata_review()
 
-    elif MODE == "normalize":
+    elif args.mode == "normalize":
         normalize_all_csv_to_parquet()
-    elif MODE == "wide":
+    elif args.mode == "wide":
         make_wide_table("transformer", "transformers_wide.parquet")
         make_wide_table("line", "lines_wide.parquet")
         make_wide_table("generator", "generators_wide.parquet")
@@ -805,14 +836,15 @@ if __name__ == "__main__":
         make_wide_table("metering_or_load", "metering_or_load_wide.parquet")
         make_wide_table("bess_or_metering", "bess_or_metering_wide.parquet")
 
-    elif MODE == "component_catalog":
+    elif args.mode == "component_catalog":
         export_component_catalog()
 
-    elif MODE == "component_files":
+    elif args.mode == "component_files":
         export_files_per_component()
 
-    elif MODE == "problems":
+    elif args.mode == "problems":
         export_problem_exids()
 
-    else:
-        raise ValueError("MODE mora biti: metadata, problems, normalize, wide, component_catalog ali component_files")
+
+if __name__ == "__main__":
+    main()

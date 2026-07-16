@@ -1,0 +1,25 @@
+# Python cache and environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# Raw data and generated analysis outputs
+data/
+output/
+outputs/
+results/
+urejeno/
+rtp_reactive_power_analysis/
+*.parquet
+
+# Operating-system files
+.DS_Store
+Thumbs.db

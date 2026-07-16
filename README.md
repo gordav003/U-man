@@ -98,3 +98,42 @@ The research may use operational power-system measurements and infrastructure in
 Further information about the wider project is available on the official CRESYM project page:
 
 [https://cresym.eu/u-man/](https://cresym.eu/u-man/)
+
+## Installation
+
+Python 3.10 or newer is recommended. Create and activate a virtual environment,
+then install the required packages:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Raw SCADA measurements and generated results should remain outside the repository
+because they may be large or confidential.
+
+## Usage
+
+Prepare the P/Q/U measurements from a directory containing SCADA CSV files:
+
+```powershell
+python ureditev_meritev.py "C:\path\to\scada-data" --mode normalize
+python ureditev_meritev.py "C:\path\to\scada-data" --mode component_files
+```
+
+Prepare transformer tap measurements:
+
+```powershell
+python ureditev_TAP_meritev.py "C:\path\to\scada-data" --mode all
+```
+
+Analyze the generated transformer component files:
+
+```powershell
+python Reactive_Power_Analysis.py `
+  "C:\path\to\scada-data\urejeno\Uman_parquet\component_files"
+```
+
+All scripts accept `--help`. The preprocessing scripts write to a directory under
+the input directory by default; use `--output-dir` to select another location.

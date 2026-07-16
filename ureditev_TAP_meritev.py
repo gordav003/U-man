@@ -1,22 +1,13 @@
-from pathlib import Path
+import argparse
 import csv
 import re
+from pathlib import Path
 
 import polars as pl
 
 # ============================================================
 # NASTAVITVE
 # ============================================================
-
-INPUT_DIR = Path(
-    r"C:\LEON\Projekti\2026\CRESYM-Uman\Uman meritve\2026_06_17  SCADA meritve 4600"
-)
-
-# TAP meritve so namenoma ločene od obstoječih P/Q/U parquet datotek.
-OUT_DIR = Path(
-    r"C:\LEON\Projekti\2026\CRESYM-Uman\Uman meritve\2026_06_17  SCADA meritve 4600"
-    r"\urejeno\Uman_TAP_parquet"
-)
 
 # Možni načini:
 #   metadata        -> poišče vse EXID, ki se končajo na T, in izdela pregled
@@ -25,7 +16,7 @@ OUT_DIR = Path(
 #   component_files -> izdela eno parquet datoteko za vsak TAP EXID
 #   catalog         -> izdela katalog vseh TAP meritev
 #   all             -> izvede metadata + problems + normalize + catalog + component_files
-MODE = "all"
+MODES = ("metadata", "problems", "normalize", "catalog", "component_files", "all")
 
 # Če je True, se ohranijo samo meritve s qst_no == 1.
 ONLY_QST_1 = True
@@ -33,18 +24,47 @@ ONLY_QST_1 = True
 # Če je True, se pred novim izvozom pobrišejo stare datoteke v izhodnih mapah.
 CLEAN_OLD_OUTPUT = True
 
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-METADATA_FILE = OUT_DIR / "tap_metadata_review.csv"
-PROBLEMS_FILE = OUT_DIR / "tap_problem_exids.csv"
-CATALOG_PARQUET = OUT_DIR / "tap_catalog.parquet"
-CATALOG_CSV = OUT_DIR / "tap_catalog.csv"
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Prepare SCADA transformer tap measurements for U-MAN analysis."
+    )
+    parser.add_argument("input_dir", type=Path, help="Directory containing input CSV files.")
+    parser.add_argument(
+        "-o", "--output-dir", type=Path,
+        help="Output directory (default: INPUT_DIR/urejeno/Uman_TAP_parquet).",
+    )
+    parser.add_argument(
+        "--mode", choices=MODES, default="all",
+        help="Processing step to run (default: all).",
+    )
+    args = parser.parse_args()
+    args.input_dir = args.input_dir.expanduser().resolve()
+    if args.output_dir is None:
+        args.output_dir = args.input_dir / "urejeno" / "Uman_TAP_parquet"
+    else:
+        args.output_dir = args.output_dir.expanduser().resolve()
+    return args
 
-NORMALIZED_DIR = OUT_DIR / "tap_parquet_normalized"
-COMPONENT_DIR = OUT_DIR / "tap_component_files"
 
-NORMALIZED_DIR.mkdir(parents=True, exist_ok=True)
-COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
+def configure_paths(input_dir: Path, output_dir: Path) -> None:
+    global INPUT_DIR, OUT_DIR, METADATA_FILE, PROBLEMS_FILE
+    global CATALOG_PARQUET, CATALOG_CSV, NORMALIZED_DIR, COMPONENT_DIR
+
+    INPUT_DIR = input_dir
+    OUT_DIR = output_dir
+    if not INPUT_DIR.is_dir():
+        raise NotADirectoryError(f"Vhodna mapa ne obstaja: {INPUT_DIR}")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    METADATA_FILE = OUT_DIR / "tap_metadata_review.csv"
+    PROBLEMS_FILE = OUT_DIR / "tap_problem_exids.csv"
+    CATALOG_PARQUET = OUT_DIR / "tap_catalog.parquet"
+    CATALOG_CSV = OUT_DIR / "tap_catalog.csv"
+    NORMALIZED_DIR = OUT_DIR / "tap_parquet_normalized"
+    COMPONENT_DIR = OUT_DIR / "tap_component_files"
+    NORMALIZED_DIR.mkdir(parents=True, exist_ok=True)
+    COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
 
 BASE_COLUMNS = [
     "exid",
@@ -671,33 +691,30 @@ def export_tap_component_files() -> None:
 # ============================================================
 
 def main() -> None:
-    if MODE == "metadata":
+    args = parse_arguments()
+    configure_paths(args.input_dir, args.output_dir)
+
+    if args.mode == "metadata":
         build_tap_metadata()
 
-    elif MODE == "problems":
+    elif args.mode == "problems":
         export_problem_exids()
 
-    elif MODE == "normalize":
+    elif args.mode == "normalize":
         normalize_tap_measurements()
 
-    elif MODE == "catalog":
+    elif args.mode == "catalog":
         export_tap_catalog()
 
-    elif MODE == "component_files":
+    elif args.mode == "component_files":
         export_tap_component_files()
 
-    elif MODE == "all":
+    elif args.mode == "all":
         build_tap_metadata()
         export_problem_exids()
         normalize_tap_measurements()
         export_tap_catalog()
         export_tap_component_files()
-
-    else:
-        raise ValueError(
-            "MODE mora biti: metadata, problems, normalize, catalog, "
-            "component_files ali all"
-        )
 
 
 if __name__ == "__main__":
