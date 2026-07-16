@@ -52,6 +52,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 plt.ioff()
 
@@ -99,14 +100,15 @@ SAVE_TRANSFORMER_CSV = False
 # Plot a combined HV/MV comparison for every continuous time segment.
 PLOT_HV_MV_COMPARISON = True
 
-# Figure size and font settings for P(t), Q(t), and U(t) time-series plots.
+# Publication-oriented settings for P(t), Q(t), and U(t) time-series plots.
 # Time-series plots have no titles; RTP duration-curve titles remain enabled.
-TIME_SERIES_FIGSIZE = (20, 9)
-TIME_SERIES_PAIR_FIGSIZE = (20, 17)
-TIME_SERIES_AXIS_LABEL_FONTSIZE = 28
-TIME_SERIES_TICK_FONTSIZE = 24
-TIME_SERIES_LEGEND_FONTSIZE = 23
-TIME_SERIES_LINEWIDTH = 2.0
+TIME_SERIES_FIGSIZE = (12, 7.5)
+TIME_SERIES_PAIR_FIGSIZE = (12, 10.5)
+TIME_SERIES_AXIS_LABEL_FONTSIZE = 11
+TIME_SERIES_TICK_FONTSIZE = 10
+TIME_SERIES_LEGEND_FONTSIZE = 10
+TIME_SERIES_LINEWIDTH = 1.2
+TIME_SERIES_DATE_INTERVAL_DAYS = 5
 
 # P/Q sign applied to the MV side in comparison plots.
 # Use 1.0 when HV and MV measurements use the same flow orientation.
@@ -128,6 +130,31 @@ def time_name(ts) -> str:
     if pd.isna(ts):
         return "NA"
     return pd.Timestamp(ts).strftime("%Y-%m-%d_%H-%M")
+
+
+def configure_shared_time_axis(ax, start_time, end_time):
+    """Format a shared time axis with sparse dates and a single year label."""
+    start_year = pd.Timestamp(start_time).year
+    end_year = pd.Timestamp(end_time).year
+    year_label = str(start_year) if start_year == end_year else f"{start_year}\u2013{end_year}"
+
+    ax.xaxis.set_major_locator(
+        mdates.DayLocator(interval=TIME_SERIES_DATE_INTERVAL_DAYS)
+    )
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+    ax.set_xlabel(
+        f"Time / {year_label}",
+        fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE,
+    )
+    ax.tick_params(axis="x", labelsize=TIME_SERIES_TICK_FONTSIZE)
+
+
+def save_figure(fig, out_png: Path):
+    """Save a preview PNG and an editable vector SVG with the same stem."""
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=300)
+    fig.savefig(out_png.with_suffix(".svg"), format="svg")
+    plt.close(fig)
 
 
 def find_col(df: pd.DataFrame, candidates):
@@ -550,9 +577,7 @@ def plot_duration_curve_together(rtp: str, df: pd.DataFrame, out_png: Path):
     ax.set_title(f"Excess reactive-power consumption/generation - RTP {rtp}")
     ax.legend(loc="upper left")
 
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=170)
-    plt.close(fig)
+    save_figure(fig, out_png)
 
 
 def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float, out_png: Path):
@@ -580,9 +605,7 @@ def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float,
             fontsize=10,
         )
 
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=170)
-    plt.close(fig)
+    save_figure(fig, out_png)
 
 
 def plot_transformer_segment_pq(
@@ -593,48 +616,39 @@ def plot_transformer_segment_pq(
     out_png: Path,
     side_label: str,
 ):
-    """Plot P and Q for the selected transformer side."""
+    """Plot P above Q on aligned axes for the selected transformer side."""
     start_time = df_seg["time"].min()
     end_time = df_seg["time"].max()
 
-    fig, ax1 = plt.subplots(figsize=TIME_SERIES_FIGSIZE)
+    fig, axes = plt.subplots(2, 1, figsize=TIME_SERIES_FIGSIZE, sharex=True)
+    ax_p, ax_q = axes
 
-    l1 = ax1.plot(
+    ax_p.plot(
         df_seg["time"],
         df_seg["P_MW"],
         linewidth=TIME_SERIES_LINEWIDTH,
         label="P [MW]",
         color="#1f77b4",
     )
-    ax1.set_xlabel("Time", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax1.set_ylabel("P [MW]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax1.tick_params(axis="both", labelsize=TIME_SERIES_TICK_FONTSIZE)
-    ax1.grid(True, alpha=0.35)
+    ax_p.set_ylabel("P [MW]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_p.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_p.grid(True, alpha=0.35)
+    ax_p.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
-    ax2 = ax1.twinx()
-    l2 = ax2.plot(
+    ax_q.plot(
         df_seg["time"],
         df_seg["Q_MVAr"],
         linewidth=TIME_SERIES_LINEWIDTH,
         label="Q [MVAr]",
         color="#ff7f0e",
     )
-    ax2.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax2.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_q.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_q.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_q.grid(True, alpha=0.35)
+    ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
-    lines = l1 + l2
-    labels = [line.get_label() for line in lines]
-    ax1.legend(
-        lines,
-        labels,
-        loc="upper left",
-        fontsize=TIME_SERIES_LEGEND_FONTSIZE,
-    )
-
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=170)
-    plt.close(fig)
+    configure_shared_time_axis(ax_q, start_time, end_time)
+    save_figure(fig, out_png)
 
 
 def plot_transformer_segment_qu(
@@ -645,66 +659,54 @@ def plot_transformer_segment_qu(
     out_png: Path,
     side_label: str,
 ):
-    """Plot Q and U_pu for the selected transformer side."""
+    """Plot U_pu above Q on aligned axes for the selected transformer side."""
     start_time = df_seg["time"].min()
     end_time = df_seg["time"].max()
 
-    fig, ax1 = plt.subplots(figsize=TIME_SERIES_FIGSIZE)
-
-    l1 = ax1.plot(
-        df_seg["time"],
-        df_seg["Q_MVAr"],
-        linewidth=TIME_SERIES_LINEWIDTH,
-        label="Q [MVAr]",
-        color="#ff7f0e",
-    )
-    ax1.set_xlabel("Time", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax1.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax1.tick_params(axis="both", labelsize=TIME_SERIES_TICK_FONTSIZE)
-    ax1.grid(True, alpha=0.35)
-
-    ax2 = ax1.twinx()
-    lines = l1
+    fig, axes = plt.subplots(2, 1, figsize=TIME_SERIES_FIGSIZE, sharex=True)
+    ax_u, ax_q = axes
 
     if df_seg["U_pu"].notna().any():
-        l2 = ax2.plot(
+        ax_u.plot(
             df_seg["time"],
             df_seg["U_pu"],
             linewidth=TIME_SERIES_LINEWIDTH,
             label="U [p.u.]",
             color="#2ca02c",
         )
-        lines = lines + l2
-
-        ax2.axhline(1.00, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.60)
-        ax2.axhline(0.95, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
-        ax2.axhline(1.05, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
+        ax_u.axhline(1.00, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.60)
+        ax_u.axhline(0.95, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
+        ax_u.axhline(1.05, linestyle="--", linewidth=1.0, color="#2ca02c", alpha=0.35)
+        ax_u.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
     else:
-        ax2.text(
+        ax_u.text(
             0.5,
             0.5,
             "U is not available",
-            transform=ax2.transAxes,
+            transform=ax_u.transAxes,
             ha="center",
             va="center",
             fontsize=TIME_SERIES_TICK_FONTSIZE,
         )
 
-    ax2.set_ylabel("U [p.u.]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    ax2.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_u.set_ylabel("U [p.u.]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_u.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_u.grid(True, alpha=0.35)
 
-    labels = [line.get_label() for line in lines]
-    ax1.legend(
-        lines,
-        labels,
-        loc="upper left",
-        fontsize=TIME_SERIES_LEGEND_FONTSIZE,
+    ax_q.plot(
+        df_seg["time"],
+        df_seg["Q_MVAr"],
+        linewidth=TIME_SERIES_LINEWIDTH,
+        label="Q [MVAr]",
+        color="#ff7f0e",
     )
+    ax_q.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_q.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax_q.grid(True, alpha=0.35)
+    ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=170)
-    plt.close(fig)
+    configure_shared_time_axis(ax_q, start_time, end_time)
+    save_figure(fig, out_png)
 
 
 def plot_all_transformer_segments(
@@ -716,8 +718,8 @@ def plot_all_transformer_segments(
 ):
     """
     Create the following plots for one transformer side:
-      - P_Q_segment_XXX.png
-      - Q_U_pu_segment_XXX.png
+      - P_Q_segment_XXX.png and .svg
+      - Q_U_pu_segment_XXX.png and .svg
     """
     transformer_dir.mkdir(parents=True, exist_ok=True)
 
@@ -766,6 +768,8 @@ def plot_all_transformer_segments(
             "U_pu_max": df_seg["U_pu"].max(),
             "png_P_Q": str(png_pq),
             "png_Q_U_pu": str(png_qu),
+            "svg_P_Q": str(png_pq.with_suffix(".svg")),
+            "svg_Q_U_pu": str(png_qu.with_suffix(".svg")),
         })
 
     if segment_summary_rows:
@@ -850,16 +854,13 @@ def plot_transformer_pair_segment(
         axes[2].text(0.5, 0.5, "U is not available", transform=axes[2].transAxes, ha="center", va="center")
 
     axes[2].set_ylabel("U [p.u.]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
-    axes[2].set_xlabel("Time", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     axes[2].grid(True, alpha=0.35)
 
     for ax in axes:
         ax.tick_params(axis="both", labelsize=TIME_SERIES_TICK_FONTSIZE)
 
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=170)
-    plt.close(fig)
+    configure_shared_time_axis(axes[2], start_time, end_time)
+    save_figure(fig, out_png)
 
 
 def plot_all_transformer_pair_segments(
@@ -931,6 +932,7 @@ def plot_all_transformer_pair_segments(
             "U_MV_pu_min": df_seg["U_MV_pu"].min(),
             "U_MV_pu_max": df_seg["U_MV_pu"].max(),
             "png_HV_MV": str(out_png),
+            "svg_HV_MV": str(out_png.with_suffix(".svg")),
         })
 
     if summary_rows:
@@ -1280,6 +1282,9 @@ for rtp, df_rtp in sorted(rtp_data.items()):
         "use_abs_p_for_limits": USE_ABS_P_FOR_LIMITS,
         "rtp_dir": str(rtp_dir),
         "png_duration": str(png_duration),
+        "svg_duration": str(png_duration.with_suffix(".svg")),
+        "png_status_share": str(png_share),
+        "svg_status_share": str(png_share.with_suffix(".svg")),
         "png_share": str(png_share),
     })
 

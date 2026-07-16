@@ -137,3 +137,5 @@ python Reactive_Power_Analysis.py `
 
 All scripts accept `--help`. The preprocessing scripts write to a directory under
 the input directory by default; use `--output-dir` to select another location.
+`Reactive_Power_Analysis.py` saves each chart both as a high-resolution PNG
+preview and as an editable vector SVG with the same file name stem.
