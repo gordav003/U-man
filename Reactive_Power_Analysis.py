@@ -93,10 +93,6 @@ MIN_POINTS_SEGMENT = 2
 # Start a new segment when the measurement gap exceeds this interval.
 MAX_GAP = pd.Timedelta("1h")
 
-# Save RTP and transformer time series as CSV files.
-SAVE_RTP_CSV = True
-SAVE_TRANSFORMER_CSV = False
-
 # Plot a combined HV/MV comparison for every continuous time segment.
 PLOT_HV_MV_COMPARISON = True
 
@@ -185,11 +181,10 @@ def configure_voltage_axis(ax, voltage_values):
             )
 
 
-def save_figure(fig, out_png: Path):
-    """Save a preview PNG and an editable vector SVG with the same stem."""
+def save_figure(fig, out_svg: Path):
+    """Save an editable vector SVG."""
     fig.tight_layout()
-    fig.savefig(out_png, dpi=300)
-    fig.savefig(out_png.with_suffix(".svg"), format="svg")
+    fig.savefig(out_svg, format="svg")
     plt.close(fig)
 
 
@@ -564,7 +559,7 @@ def duration_curve_data(df: pd.DataFrame):
     return time_percent, s
 
 
-def plot_duration_curve_together(rtp: str, df: pd.DataFrame, out_png: Path):
+def plot_duration_curve_together(rtp: str, df: pd.DataFrame, out_svg: Path):
     """
     Plot the dQ duration curve for an entire RTP.
     """
@@ -613,10 +608,10 @@ def plot_duration_curve_together(rtp: str, df: pd.DataFrame, out_png: Path):
     ax.set_title(f"Excess reactive-power consumption/generation - RTP {rtp}")
     ax.legend(loc="upper left")
 
-    save_figure(fig, out_png)
+    save_figure(fig, out_svg)
 
 
-def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float, out_png: Path):
+def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float, out_svg: Path):
     """
     Plot the share of time in each Q status for an entire RTP.
     """
@@ -641,7 +636,7 @@ def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float,
             fontsize=10,
         )
 
-    save_figure(fig, out_png)
+    save_figure(fig, out_svg)
 
 
 def plot_transformer_segment_pq(
@@ -649,7 +644,7 @@ def plot_transformer_segment_pq(
     comp_id: str,
     segment_id: int,
     df_seg: pd.DataFrame,
-    out_png: Path,
+    out_svg: Path,
     side_label: str,
 ):
     """Plot P above Q on aligned axes for the selected transformer side."""
@@ -684,7 +679,7 @@ def plot_transformer_segment_pq(
     ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
     configure_shared_time_axis(ax_q, start_time, end_time)
-    save_figure(fig, out_png)
+    save_figure(fig, out_svg)
 
 
 def plot_transformer_segment_qu(
@@ -692,7 +687,7 @@ def plot_transformer_segment_qu(
     comp_id: str,
     segment_id: int,
     df_seg: pd.DataFrame,
-    out_png: Path,
+    out_svg: Path,
     side_label: str,
 ):
     """Plot U_pu above Q on aligned axes for the selected transformer side."""
@@ -740,7 +735,7 @@ def plot_transformer_segment_qu(
     ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
     configure_shared_time_axis(ax_q, start_time, end_time)
-    save_figure(fig, out_png)
+    save_figure(fig, out_svg)
 
 
 def plot_all_transformer_segments(
@@ -752,19 +747,14 @@ def plot_all_transformer_segments(
 ):
     """
     Create the following plots for one transformer side:
-      - P_Q_segment_XXX.png and .svg
-      - Q_U_pu_segment_XXX.png and .svg
+      - P_Q_segment_XXX.svg
+      - Q_U_pu_segment_XXX.svg
     """
     transformer_dir.mkdir(parents=True, exist_ok=True)
 
     df_plot = df_transformer[["time", "P_MW", "Q_MVAr", "U_kV", "U_pu"]].copy()
     df_plot = add_segments(df_plot, "time")
-
-    if SAVE_TRANSFORMER_CSV:
-        csv_path = transformer_dir / f"{safe_name(comp_id)}_timeseries.csv"
-        df_plot.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    segment_summary_rows = []
+    n_segments = 0
 
     for segment_id, df_seg in df_plot.groupby("segment"):
         if len(df_seg) < MIN_POINTS_SEGMENT:
@@ -774,46 +764,18 @@ def plot_all_transformer_segments(
         end_str = time_name(df_seg["time"].max())
         base = f"segment_{int(segment_id):03d}_{start_str}_to_{end_str}"
 
-        png_pq = transformer_dir / f"P_Q_{base}.png"
-        png_qu = transformer_dir / f"Q_U_pu_{base}.png"
+        svg_pq = transformer_dir / f"P_Q_{base}.svg"
+        svg_qu = transformer_dir / f"Q_U_pu_{base}.svg"
 
         plot_transformer_segment_pq(
-            rtp, comp_id, int(segment_id), df_seg, png_pq, side_label
+            rtp, comp_id, int(segment_id), df_seg, svg_pq, side_label
         )
         plot_transformer_segment_qu(
-            rtp, comp_id, int(segment_id), df_seg, png_qu, side_label
+            rtp, comp_id, int(segment_id), df_seg, svg_qu, side_label
         )
+        n_segments += 1
 
-        segment_summary_rows.append({
-            "rtp": rtp,
-            "component_file_id": comp_id,
-            "side": side_label,
-            "segment": int(segment_id),
-            "start_time": df_seg["time"].min(),
-            "end_time": df_seg["time"].max(),
-            "n_points": len(df_seg),
-            "P_min_MW": df_seg["P_MW"].min(),
-            "P_max_MW": df_seg["P_MW"].max(),
-            "Q_min_MVAr": df_seg["Q_MVAr"].min(),
-            "Q_max_MVAr": df_seg["Q_MVAr"].max(),
-            "U_kV_min": df_seg["U_kV"].min(),
-            "U_kV_max": df_seg["U_kV"].max(),
-            "U_pu_min": df_seg["U_pu"].min(),
-            "U_pu_max": df_seg["U_pu"].max(),
-            "png_P_Q": str(png_pq),
-            "png_Q_U_pu": str(png_qu),
-            "svg_P_Q": str(png_pq.with_suffix(".svg")),
-            "svg_Q_U_pu": str(png_qu.with_suffix(".svg")),
-        })
-
-    if segment_summary_rows:
-        pd.DataFrame(segment_summary_rows).to_csv(
-            transformer_dir / "segment_summary.csv",
-            index=False,
-            encoding="utf-8-sig",
-        )
-
-    return len(segment_summary_rows)
+    return n_segments
 
 
 def merge_hv_mv_timeseries(df_hv: pd.DataFrame, df_mv: pd.DataFrame):
@@ -857,7 +819,7 @@ def plot_transformer_pair_segment(
     mv_kv: float,
     segment_id: int,
     df_seg: pd.DataFrame,
-    out_png: Path,
+    out_svg: Path,
 ):
     """Plot P, Q, and U for the HV and MV sides of a transformer."""
     start_time = df_seg["time"].min()
@@ -892,7 +854,7 @@ def plot_transformer_pair_segment(
         ax.tick_params(axis="both", labelsize=TIME_SERIES_TICK_FONTSIZE)
 
     configure_shared_time_axis(axes[2], start_time, end_time)
-    save_figure(fig, out_png)
+    save_figure(fig, out_svg)
 
 
 def plot_all_transformer_pair_segments(
@@ -912,15 +874,7 @@ def plot_all_transformer_pair_segments(
         return 0
 
     df_pair = add_segments(df_pair, "time")
-
-    if SAVE_TRANSFORMER_CSV:
-        df_pair.to_csv(
-            pair_dir / f"{safe_name(transformer_id)}_HV_MV_timeseries.csv",
-            index=False,
-            encoding="utf-8-sig",
-        )
-
-    summary_rows = []
+    n_segments = 0
 
     for segment_id, df_seg in df_pair.groupby("segment"):
         if len(df_seg) < MIN_POINTS_SEGMENT:
@@ -929,7 +883,7 @@ def plot_all_transformer_pair_segments(
         start_str = time_name(df_seg["time"].min())
         end_str = time_name(df_seg["time"].max())
         base = f"segment_{int(segment_id):03d}_{start_str}_to_{end_str}"
-        out_png = pair_dir / f"HV_MV_P_Q_U_{base}.png"
+        out_svg = pair_dir / f"HV_MV_P_Q_U_{base}.svg"
 
         plot_transformer_pair_segment(
             rtp=rtp,
@@ -938,43 +892,11 @@ def plot_all_transformer_pair_segments(
             mv_kv=mv_kv,
             segment_id=int(segment_id),
             df_seg=df_seg,
-            out_png=out_png,
+            out_svg=out_svg,
         )
+        n_segments += 1
 
-        summary_rows.append({
-            "rtp": rtp,
-            "transformer_id": transformer_id,
-            "segment": int(segment_id),
-            "start_time": df_seg["time"].min(),
-            "end_time": df_seg["time"].max(),
-            "n_common_points": len(df_seg),
-            "hv_kv": hv_kv,
-            "mv_kv": mv_kv,
-            "mv_power_sign_for_comparison": MV_POWER_SIGN_FOR_COMPARISON,
-            "P_HV_min_MW": df_seg["P_HV_MW"].min(),
-            "P_HV_max_MW": df_seg["P_HV_MW"].max(),
-            "P_MV_raw_min_MW": df_seg["P_MV_MW"].min(),
-            "P_MV_raw_max_MW": df_seg["P_MV_MW"].max(),
-            "Q_HV_min_MVAr": df_seg["Q_HV_MVAr"].min(),
-            "Q_HV_max_MVAr": df_seg["Q_HV_MVAr"].max(),
-            "Q_MV_raw_min_MVAr": df_seg["Q_MV_MVAr"].min(),
-            "Q_MV_raw_max_MVAr": df_seg["Q_MV_MVAr"].max(),
-            "U_HV_pu_min": df_seg["U_HV_pu"].min(),
-            "U_HV_pu_max": df_seg["U_HV_pu"].max(),
-            "U_MV_pu_min": df_seg["U_MV_pu"].min(),
-            "U_MV_pu_max": df_seg["U_MV_pu"].max(),
-            "png_HV_MV": str(out_png),
-            "svg_HV_MV": str(out_png.with_suffix(".svg")),
-        })
-
-    if summary_rows:
-        pd.DataFrame(summary_rows).to_csv(
-            pair_dir / "HV_MV_segment_summary.csv",
-            index=False,
-            encoding="utf-8-sig",
-        )
-
-    return len(summary_rows)
+    return n_segments
 
 # ============================================================
 # MAIN PROGRAM
@@ -1025,13 +947,11 @@ if not candidate_files:
     )
 
 # ============================================================
-# BUILD RTP TIME SERIES AND SAVE TRANSFORMER DATA
+# BUILD RTP TIME SERIES
 # ============================================================
 
 rtp_data = {}
 rtp_transformers = {}
-errors = []
-transformer_summary_rows = []
 
 for i, (hv_path, mv_path, meta) in enumerate(candidate_files, start=1):
     mv_text = mv_path.name if mv_path is not None else "without an MV file"
@@ -1061,19 +981,12 @@ for i, (hv_path, mv_path, meta) in enumerate(candidate_files, start=1):
                     df_mv = None
             except Exception as e_mv:
                 print(f"  -> WARNING: error while reading the MV side: {e_mv}")
-                errors.append({
-                    "file": mv_path.name,
-                    "rtp": rtp,
-                    "transformer_id": transformer_id,
-                    "side": "MV",
-                    "error": str(e_mv),
-                })
                 df_mv = None
 
         # Store both transformer sides.
         rtp_transformers.setdefault(rtp, {})[hv_comp_id] = {
-            "hv_df": df_hv.copy(),
-            "mv_df": None if df_mv is None else df_mv.copy(),
+            "hv_df": df_hv,
+            "mv_df": df_mv,
             "meta": meta,
             "hv_path": hv_path,
             "mv_path": mv_path,
@@ -1095,52 +1008,15 @@ for i, (hv_path, mv_path, meta) in enumerate(candidate_files, start=1):
                 how="outer",
             )
 
-        n_u_hv = int(df_hv["U_pu"].notna().sum())
-        n_u_mv = int(df_mv["U_pu"].notna().sum()) if df_mv is not None else 0
-
-        summary_row = {
-            "rtp": rtp,
-            "transformer_id": transformer_id,
-            "hv_component_file_id": hv_comp_id,
-            "hv_file": hv_path.name,
-            "hv_voltage_kv": hv_kv,
-            "hv_n_points": len(df_hv),
-            "hv_n_U_valid": n_u_hv,
-            "hv_time_start": df_hv["time"].min(),
-            "hv_time_end": df_hv["time"].max(),
-            "hv_P_min_MW": df_hv["P_MW"].min(),
-            "hv_P_max_MW": df_hv["P_MW"].max(),
-            "hv_Q_min_MVAr": df_hv["Q_MVAr"].min(),
-            "hv_Q_max_MVAr": df_hv["Q_MVAr"].max(),
-            "hv_U_kV_min": df_hv["U_kV"].min(),
-            "hv_U_kV_max": df_hv["U_kV"].max(),
-            "hv_U_pu_min": df_hv["U_pu"].min(),
-            "hv_U_pu_max": df_hv["U_pu"].max(),
-            "mv_component_file_id": mv_comp_id,
-            "mv_file": None if mv_path is None else mv_path.name,
-            "mv_voltage_kv": mv_kv,
-            "mv_n_points": 0 if df_mv is None else len(df_mv),
-            "mv_n_U_valid": n_u_mv,
-            "mv_time_start": pd.NaT if df_mv is None else df_mv["time"].min(),
-            "mv_time_end": pd.NaT if df_mv is None else df_mv["time"].max(),
-            "mv_P_min_MW": np.nan if df_mv is None else df_mv["P_MW"].min(),
-            "mv_P_max_MW": np.nan if df_mv is None else df_mv["P_MW"].max(),
-            "mv_Q_min_MVAr": np.nan if df_mv is None else df_mv["Q_MVAr"].min(),
-            "mv_Q_max_MVAr": np.nan if df_mv is None else df_mv["Q_MVAr"].max(),
-            "mv_U_kV_min": np.nan if df_mv is None else df_mv["U_kV"].min(),
-            "mv_U_kV_max": np.nan if df_mv is None else df_mv["U_kV"].max(),
-            "mv_U_pu_min": np.nan if df_mv is None else df_mv["U_pu"].min(),
-            "mv_U_pu_max": np.nan if df_mv is None else df_mv["U_pu"].max(),
-        }
-        transformer_summary_rows.append(summary_row)
-
         if df_mv is None:
             print(
                 f"  -> HV OK | RTP = {rtp} | {hv_kv:g} kV | points = {len(df_hv)} | "
                 "MV measurements were not read"
             )
         else:
-            n_common = len(merge_hv_mv_timeseries(df_hv, df_mv))
+            n_common = pd.Index(df_hv["time"]).intersection(
+                pd.Index(df_mv["time"])
+            ).size
             print(
                 f"  -> HV/MV OK | RTP = {rtp} | {hv_kv:g}/{float(mv_kv):g} kV | "
                 f"HV points = {len(df_hv)} | MV points = {len(df_mv)} | matching timestamps = {n_common}"
@@ -1148,13 +1024,6 @@ for i, (hv_path, mv_path, meta) in enumerate(candidate_files, start=1):
 
     except Exception as e:
         print(f"  -> ERROR: {e}")
-        errors.append({
-            "file": hv_path.name,
-            "rtp": meta.get("rtp"),
-            "transformer_id": meta.get("transformer_id"),
-            "side": "HV",
-            "error": str(e),
-        })
 
 # ============================================================
 # ANALYZE EACH RTP
@@ -1223,16 +1092,12 @@ for rtp, df_rtp in sorted(rtp_data.items()):
     print(f"  -> dQ min/max:    {dQ_min:.3f} / {dQ_max:.3f} MVAr")
     print(f"  -> cap/ok/ind:    {pct_cap:.2f}% / {pct_ok:.2f}% / {pct_ind:.2f}%")
 
-    if SAVE_RTP_CSV:
-        csv_path = rtp_dir / f"{safe_name(rtp)}_cosphi_095_timeseries.csv"
-        df_rtp.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
     # Store RTP plots in the corresponding RTP directory.
-    png_duration = rtp_dir / f"{safe_name(rtp)}_01_dQ_duration_curve_cosphi_095.png"
-    plot_duration_curve_together(rtp, df_rtp, png_duration)
+    svg_duration = rtp_dir / f"{safe_name(rtp)}_01_dQ_duration_curve_cosphi_095.svg"
+    plot_duration_curve_together(rtp, df_rtp, svg_duration)
 
-    png_share = rtp_dir / f"{safe_name(rtp)}_02_q_status_share_cosphi_095.png"
-    plot_q_status_share(rtp, pct_cap, pct_ok, pct_ind, png_share)
+    svg_share = rtp_dir / f"{safe_name(rtp)}_02_q_status_share_cosphi_095.svg"
+    plot_q_status_share(rtp, pct_cap, pct_ok, pct_ind, svg_share)
 
     # Transformer plots inside each RTP directory:
     #   HV_110_kV      -> P/Q and Q/U for the HV side
@@ -1313,19 +1178,13 @@ for rtp, df_rtp in sorted(rtp_data.items()):
         "cosphi_limit": COSPHI_LIMIT,
         "use_abs_p_for_limits": USE_ABS_P_FOR_LIMITS,
         "rtp_dir": str(rtp_dir),
-        "png_duration": str(png_duration),
-        "svg_duration": str(png_duration.with_suffix(".svg")),
-        "png_status_share": str(png_share),
-        "svg_status_share": str(png_share.with_suffix(".svg")),
-        "png_share": str(png_share),
     })
 
 # ============================================================
-# SAVE SUMMARIES
+# PREPARE CONSOLE SUMMARY
 # ============================================================
 
 summary_df = pd.DataFrame(summary_rows)
-summary_path = OUTPUT_DIR / "RTP_cosphi_095_summary.csv"
 
 if not summary_df.empty:
     summary_df = summary_df.sort_values(
@@ -1333,60 +1192,15 @@ if not summary_df.empty:
         ascending=[False, True],
     )
 
-summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
-
-transformer_summary_df = pd.DataFrame(transformer_summary_rows)
-transformer_summary_path = OUTPUT_DIR / "transformer_summary.csv"
-
-if not transformer_summary_df.empty:
-    transformer_summary_df = transformer_summary_df.sort_values(["rtp", "hv_component_file_id"])
-
-transformer_summary_df.to_csv(transformer_summary_path, index=False, encoding="utf-8-sig")
-
-
-# Save the candidate audit so excluded 110 kV transformers can be reviewed,
-# including those without a matching MV file.
-if ONLY_110_MV_TRANSFORMERS and candidate_stats.get("excluded_110_without_mv_rows"):
-    excluded_110_path = OUTPUT_DIR / "excluded_110_without_MV_pair.csv"
-    pd.DataFrame(candidate_stats["excluded_110_without_mv_rows"]).to_csv(
-        excluded_110_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-if ONLY_110_MV_TRANSFORMERS and candidate_stats.get("ignored_rows"):
-    ignored_files_path = OUTPUT_DIR / "ignored_TR_parser_files.csv"
-    pd.DataFrame(candidate_stats["ignored_rows"]).to_csv(
-        ignored_files_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-if ONLY_110_MV_TRANSFORMERS and candidate_stats.get("duplicate_mv_rows"):
-    duplicate_mv_path = OUTPUT_DIR / "duplicate_MV_pairs.csv"
-    pd.DataFrame(candidate_stats["duplicate_mv_rows"]).to_csv(
-        duplicate_mv_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-if errors:
-    errors_df = pd.DataFrame(errors)
-    errors_path = OUTPUT_DIR / "RTP_cosphi_095_errors.csv"
-    errors_df.to_csv(errors_path, index=False, encoding="utf-8-sig")
-
 print()
 print("=" * 90)
 print("DONE")
 print("=" * 90)
 print(f"RTPs analyzed: {len(summary_df)}")
-print(f"RTP summary:     {summary_path}")
-print(f"Transformer summary: {transformer_summary_path}")
+print("CSV output:          disabled")
 print(f"Output directory:    {OUTPUT_DIR}")
 if ONLY_110_MV_TRANSFORMERS:
     print(f"110 kV files excluded without an MV pair: {candidate_stats['excluded_110_without_mv']}")
-    if candidate_stats.get("excluded_110_without_mv_rows"):
-        print(f"Exclusion audit: {excluded_110_path}")
 
 if not summary_df.empty:
     print()
