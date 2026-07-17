@@ -106,9 +106,10 @@ TIME_SERIES_FIGSIZE = (12, 7.5)
 TIME_SERIES_PAIR_FIGSIZE = (12, 10.5)
 TIME_SERIES_AXIS_LABEL_FONTSIZE = 11
 TIME_SERIES_TICK_FONTSIZE = 10
+TIME_SERIES_DATE_TICK_FONTSIZE = 9
 TIME_SERIES_LEGEND_FONTSIZE = 10
 TIME_SERIES_LINEWIDTH = 1.2
-TIME_SERIES_DATE_INTERVAL_DAYS = 5
+TIME_SERIES_DATE_INTERVAL_DAYS = 1
 VOLTAGE_Y_PADDING_FRACTION = 0.08
 VOLTAGE_Y_MIN_PADDING_PU = 0.002
 
@@ -135,7 +136,7 @@ def time_name(ts) -> str:
 
 
 def configure_shared_time_axis(ax, start_time, end_time):
-    """Format a shared time axis with sparse dates and a single year label."""
+    """Show every date in the segment and place the year in the axis label."""
     start_year = pd.Timestamp(start_time).year
     end_year = pd.Timestamp(end_time).year
     year_label = str(start_year) if start_year == end_year else f"{start_year}\u2013{end_year}"
@@ -144,11 +145,13 @@ def configure_shared_time_axis(ax, start_time, end_time):
         mdates.DayLocator(interval=TIME_SERIES_DATE_INTERVAL_DAYS)
     )
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+    ax.set_xlim(pd.Timestamp(start_time), pd.Timestamp(end_time))
     ax.set_xlabel(
         f"Time / {year_label}",
         fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE,
     )
-    ax.tick_params(axis="x", labelsize=TIME_SERIES_TICK_FONTSIZE)
+    ax.tick_params(axis="x", labelsize=TIME_SERIES_DATE_TICK_FONTSIZE)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
 
 def configure_voltage_axis(ax, voltage_values):
