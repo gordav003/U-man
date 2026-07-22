@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+import argparse
+from datetime import timedelta
+from pathlib import Path
+
+import polars as pl
+
+
+HV_LEVELS_KV = (110, 220, 400)
+DEFAULT_THRESHOLD_PU = 1.05
+
+
+def default_input_path() -> Path:
+    project_root = Path(__file__).resolve().parent.parent
+    return (
+        project_root
+        / "Uman meritve"
+        / "2026_06_17  SCADA meritve 4600"
+        / "urejeno"
+        / "Uman_parquet"
+        / "transformers_wide.parquet"
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Najde trenutke z napetostmi nad pragom na 110-, 220- in 400-kV "
+            "straneh transformatorjev. Rezultat izpise samo v konzolo."
+        )
+    )
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=default_input_path(),
+        help="Pot do transformers_wide.parquet.",
+    )
+    parser.add_argument(
+        "--threshold-pu",
+        type=float,
+        default=DEFAULT_THRESHOLD_PU,
+        help="Prag visoke napetosti v pu (privzeto: 1.05).",
+    )
+    parser.add_argument(
+        "--moments",
+        type=int,
+        default=3,
+        help="Stevilo izbranih trenutkov (privzeto: 3).",
+    )
+    parser.add_argument(
+        "--min-separation-hours",
+        type=float,
+        default=24.0,
+        help=(
+            "Najmanjsi razmik med izbranimi trenutki, da zaporedni 15-minutni "
+            "vzorci istega dogodka niso izbrani veckrat (privzeto: 24 h)."
+        ),
+    )
+    parser.add_argument(
+        "--rank-by",
+        choices=("count", "max"),
+        default="count",
+        help=(
+            "'count': najprej najvec trafov nad pragom; "
+            "'max': najprej najvisja posamezna napetost (privzeto: count)."
+        ),
+    )
+    parser.add_argument(
+        "--only-110",
+        action="store_true",
+        help=(
+            "Analizo in izpis omeji samo na transformatorje na 110-kV nivoju. "
+            "Brez te opcije se uporabijo nivoji 110, 220 in 400 kV."
+        ),
+    )
+    return parser.parse_args()
+
+
+def transformer_rows(
+    parquet_path: Path,
+    voltage_levels_kv: tuple[int, ...],
+) -> pl.LazyFrame:
+    required = {
+        "time",
+        "component_id",
+        "napetost_kv",
+        "lokacija_od",
+        "objekt",
+        "U",
+    }
+
+    lazy = pl.scan_parquet(parquet_path)
+    available = set(lazy.collect_schema().names())
+    missing = sorted(required - available)
+    if missing:
+        raise ValueError(
+            "V vhodnem Parquetu manjkajo stolpci: " + ", ".join(missing)
+        )
+
+    # U je v urejenih SCADA podatkih podan v kV. Grupiranje zagotovi, da se isti
+    # transformator v istem trenutku ne steje veckrat, ce obstaja vec zapisov.
+    return (
+        lazy.filter(pl.col("napetost_kv").is_in(voltage_levels_kv))
+        .filter(pl.col("U").is_not_null())
+        .group_by(
+            ["time", "component_id", "napetost_kv", "lokacija_od", "objekt"]
+        )
+        .agg(pl.col("U").max().alias("U_kV"))
+        .with_columns(
+            (pl.col("U_kV") / pl.col("napetost_kv")).alias("U_pu")
+        )
+        # Izloci nicelne meritve in ocitne napake/enote, ki niso kV.
+        .filter(pl.col("U_pu").is_between(0.5, 1.5, closed="both"))
+    )
+
+
+def choose_separated_moments(
+    candidates: pl.DataFrame,
+    number_of_moments: int,
+    minimum_separation: timedelta,
+) -> list:
+    selected = []
+
+    for moment in candidates.get_column("time").to_list():
+        if all(abs(moment - previous) >= minimum_separation for previous in selected):
+            selected.append(moment)
+            if len(selected) == number_of_moments:
+                break
+
+    return selected
+
+
+def format_transformer(row: dict) -> str:
+    location = row.get("lokacija_od") or "?"
+    obj = row.get("objekt") or row["component_id"]
+    return f"{location} {obj}"
+
+
+def main() -> None:
+    args = parse_args()
+    parquet_path = args.input.resolve()
+    voltage_levels_kv = (110,) if args.only_110 else HV_LEVELS_KV
+
+    if not parquet_path.is_file():
+        raise FileNotFoundError(f"Vhodna datoteka ne obstaja: {parquet_path}")
+    if args.moments < 1:
+        raise ValueError("--moments mora biti vsaj 1.")
+    if args.min_separation_hours < 0:
+        raise ValueError("--min-separation-hours ne sme biti negativen.")
+
+    rows = transformer_rows(parquet_path, voltage_levels_kv)
+
+    summary = (
+        rows.group_by("time")
+        .agg(
+            (pl.col("U_pu") > args.threshold_pu).sum().alias("n_above"),
+            pl.col("U_pu").max().alias("max_U_pu"),
+            pl.len().alias("n_valid"),
+        )
+        .filter(pl.col("n_above") > 0)
+    )
+
+    if args.rank_by == "count":
+        summary = summary.sort(
+            ["n_above", "max_U_pu", "time"], descending=[True, True, False]
+        )
+    else:
+        summary = summary.sort(
+            ["max_U_pu", "n_above", "time"], descending=[True, True, False]
+        )
+
+    candidates = summary.collect()
+    if candidates.is_empty():
+        print(
+            f"Ni trenutkov, v katerih bi bil kateri od VN transformatorjev "
+            f"nad {args.threshold_pu:.4f} pu."
+        )
+        return
+
+    selected_times = choose_separated_moments(
+        candidates,
+        number_of_moments=args.moments,
+        minimum_separation=timedelta(hours=args.min_separation_hours),
+    )
+
+    details = (
+        rows.filter(pl.col("time").is_in(selected_times))
+        .sort(["time", "U_pu"], descending=[False, True])
+        .collect()
+    )
+
+    print("=" * 88)
+    print("VISOKE VN NAPETOSTI TRANSFORMATORJEV")
+    print(f"Vhod: {parquet_path}")
+    print(f"VN nivoji: {', '.join(map(str, voltage_levels_kv))} kV")
+    print(f"Prag: > {args.threshold_pu:.4f} pu")
+    print(f"Razvrscanje: {args.rank_by}")
+    print(f"Najmanjsi razmik med dogodki: {args.min_separation_hours:g} h")
+    print("=" * 88)
+
+    if len(selected_times) < args.moments:
+        print(
+            f"OPOZORILO: z zahtevanim razmikom je bilo mogoce izbrati samo "
+            f"{len(selected_times)} od {args.moments} trenutkov.\n"
+        )
+
+    for index, moment in enumerate(selected_times, start=1):
+        moment_rows = details.filter(pl.col("time") == moment)
+        above = moment_rows.filter(pl.col("U_pu") > args.threshold_pu)
+        maximum_pu = moment_rows.get_column("U_pu").max()
+        highest = moment_rows.filter(
+            (pl.col("U_pu") - maximum_pu).abs() < 1e-9
+        )
+
+        print(f"\n{index}. TRENUTEK: {moment}")
+        print(f"   Trafov nad pragom: {above.height}")
+        print(f"   Veljavnih VN meritev v trenutku: {moment_rows.height}")
+        print("   Najvisja napetost v trenutku:")
+        for row in highest.iter_rows(named=True):
+            print(
+                f"     - {format_transformer(row)} | {row['napetost_kv']} kV nivo | "
+                f"U = {row['U_kV']:.3f} kV | U = {row['U_pu']:.5f} pu"
+            )
+
+        print(f"   Vsi transformatorji nad {args.threshold_pu:.4f} pu:")
+        for row in above.iter_rows(named=True):
+            print(
+                f"     - {format_transformer(row):30s} | "
+                f"nivo {row['napetost_kv']:>3} kV | "
+                f"U = {row['U_kV']:>8.3f} kV | U = {row['U_pu']:.5f} pu"
+            )
+
+    print("\n" + "=" * 88)
+    print("Konec. Skripta ni ustvarila nobene izhodne datoteke.")
+
+
+if __name__ == "__main__":
+    main()
