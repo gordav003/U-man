@@ -62,8 +62,17 @@ def parse_args() -> argparse.Namespace:
         choices=("count", "max"),
         default="count",
         help=(
-            "'count': najprej najvec trafov nad pragom; "
+            "'count': najprej najvec RTP-jev nad pragom; "
             "'max': najprej najvisja posamezna napetost (privzeto: count)."
+        ),
+    )
+    parser.add_argument(
+        "--top-rtps",
+        type=int,
+        default=10,
+        help=(
+            "Najvecje stevilo različnih RTP-jev, izpisanih pri vsakem "
+            "trenutku (privzeto: 10)."
         ),
     )
     parser.add_argument(
@@ -137,6 +146,138 @@ def format_transformer(row: dict) -> str:
     return f"{location} {obj}"
 
 
+def build_moment_summary(
+    rows: pl.LazyFrame,
+    threshold_pu: float,
+    rank_by: str,
+) -> pl.LazyFrame:
+    above_threshold = pl.col("U_pu") > threshold_pu
+
+    summary = (
+        rows.group_by("time")
+        .agg(
+            above_threshold.sum().alias("n_transformers_above"),
+            pl.col("lokacija_od")
+            .filter(above_threshold & pl.col("lokacija_od").is_not_null())
+            .n_unique()
+            .alias("n_rtps_above"),
+            pl.col("U_pu").max().alias("max_U_pu"),
+            pl.len().alias("n_valid"),
+        )
+        .filter(pl.col("n_transformers_above") > 0)
+    )
+
+    if rank_by == "count":
+        return summary.sort(
+            ["n_rtps_above", "n_transformers_above", "max_U_pu", "time"],
+            descending=[True, True, True, False],
+        )
+
+    return summary.sort(
+        ["max_U_pu", "n_rtps_above", "n_transformers_above", "time"],
+        descending=[True, True, True, False],
+    )
+
+
+def top_distinct_rtps(above: pl.DataFrame, limit: int) -> list[dict]:
+    """Return the highest-voltage transformer for each of the top RTPs."""
+    result = []
+    seen_rtps = set()
+
+    for row in above.sort("U_pu", descending=True).iter_rows(named=True):
+        rtp = row.get("lokacija_od") or "?"
+        if rtp in seen_rtps:
+            continue
+
+        seen_rtps.add(rtp)
+        result.append(row)
+        if len(result) == limit:
+            break
+
+    return result
+
+
+def print_level_results(
+    rows: pl.LazyFrame,
+    voltage_level_kv: int,
+    threshold_pu: float,
+    number_of_moments: int,
+    minimum_separation: timedelta,
+    rank_by: str,
+    top_rtps_limit: int,
+) -> None:
+    level_rows = rows.filter(pl.col("napetost_kv") == voltage_level_kv)
+    candidates = build_moment_summary(
+        level_rows,
+        threshold_pu=threshold_pu,
+        rank_by=rank_by,
+    ).collect()
+
+    print("\n" + "#" * 88)
+    print(f"NAPETOSTNI NIVO: {voltage_level_kv} kV")
+    print("#" * 88)
+
+    if candidates.is_empty():
+        print(
+            f"Ni trenutkov, v katerih bi bil kateri od transformatorjev "
+            f"na nivoju {voltage_level_kv} kV nad {threshold_pu:.4f} pu."
+        )
+        return
+
+    selected_times = choose_separated_moments(
+        candidates,
+        number_of_moments=number_of_moments,
+        minimum_separation=minimum_separation,
+    )
+
+    if len(selected_times) < number_of_moments:
+        print(
+            f"OPOZORILO: z zahtevanim razmikom je bilo mogoce izbrati samo "
+            f"{len(selected_times)} od {number_of_moments} trenutkov."
+        )
+
+    details = (
+        level_rows.filter(pl.col("time").is_in(selected_times))
+        .sort(["time", "U_pu"], descending=[False, True])
+        .collect()
+    )
+
+    for index, moment in enumerate(selected_times, start=1):
+        moment_rows = details.filter(pl.col("time") == moment)
+        above = moment_rows.filter(pl.col("U_pu") > threshold_pu)
+        top_rtps = top_distinct_rtps(above, top_rtps_limit)
+        maximum_pu = moment_rows.get_column("U_pu").max()
+        highest = moment_rows.filter(
+            (pl.col("U_pu") - maximum_pu).abs() < 1e-9
+        )
+
+        print(f"\n{index}. TRENUTEK: {moment}")
+        print(
+            f"   RTP-jev nad pragom: "
+            f"{above.get_column('lokacija_od').drop_nulls().n_unique()}"
+        )
+        print(f"   Transformatorjev nad pragom: {above.height}")
+        print(f"   Veljavnih meritev na nivoju: {moment_rows.height}")
+        print("   Najvisja napetost v trenutku:")
+        for row in highest.iter_rows(named=True):
+            print(
+                f"     - {format_transformer(row)} | "
+                f"U = {row['U_kV']:.3f} kV | U = {row['U_pu']:.5f} pu"
+            )
+
+        print(
+            f"   TOP {min(top_rtps_limit, len(top_rtps))} RTP-jev "
+            f"nad {threshold_pu:.4f} pu:"
+        )
+        for rank, row in enumerate(top_rtps, start=1):
+            rtp = row.get("lokacija_od") or "?"
+            transformer = row.get("objekt") or row["component_id"]
+            print(
+                f"     {rank:>2}. {rtp:20s} | trafo {transformer:12s} | "
+                f"U = {row['U_kV']:>8.3f} kV | U = {row['U_pu']:.5f} pu"
+            )
+
+
 def main() -> None:
     args = parse_args()
     parquet_path = args.input.resolve()
@@ -148,47 +289,10 @@ def main() -> None:
         raise ValueError("--moments mora biti vsaj 1.")
     if args.min_separation_hours < 0:
         raise ValueError("--min-separation-hours ne sme biti negativen.")
+    if args.top_rtps < 1:
+        raise ValueError("--top-rtps mora biti vsaj 1.")
 
     rows = transformer_rows(parquet_path, voltage_levels_kv)
-
-    summary = (
-        rows.group_by("time")
-        .agg(
-            (pl.col("U_pu") > args.threshold_pu).sum().alias("n_above"),
-            pl.col("U_pu").max().alias("max_U_pu"),
-            pl.len().alias("n_valid"),
-        )
-        .filter(pl.col("n_above") > 0)
-    )
-
-    if args.rank_by == "count":
-        summary = summary.sort(
-            ["n_above", "max_U_pu", "time"], descending=[True, True, False]
-        )
-    else:
-        summary = summary.sort(
-            ["max_U_pu", "n_above", "time"], descending=[True, True, False]
-        )
-
-    candidates = summary.collect()
-    if candidates.is_empty():
-        print(
-            f"Ni trenutkov, v katerih bi bil kateri od VN transformatorjev "
-            f"nad {args.threshold_pu:.4f} pu."
-        )
-        return
-
-    selected_times = choose_separated_moments(
-        candidates,
-        number_of_moments=args.moments,
-        minimum_separation=timedelta(hours=args.min_separation_hours),
-    )
-
-    details = (
-        rows.filter(pl.col("time").is_in(selected_times))
-        .sort(["time", "U_pu"], descending=[False, True])
-        .collect()
-    )
 
     print("=" * 88)
     print("VISOKE VN NAPETOSTI TRANSFORMATORJEV")
@@ -196,40 +300,20 @@ def main() -> None:
     print(f"VN nivoji: {', '.join(map(str, voltage_levels_kv))} kV")
     print(f"Prag: > {args.threshold_pu:.4f} pu")
     print(f"Razvrscanje: {args.rank_by}")
+    print(f"Najvec RTP-jev v posameznem izpisu: {args.top_rtps}")
     print(f"Najmanjsi razmik med dogodki: {args.min_separation_hours:g} h")
     print("=" * 88)
 
-    if len(selected_times) < args.moments:
-        print(
-            f"OPOZORILO: z zahtevanim razmikom je bilo mogoce izbrati samo "
-            f"{len(selected_times)} od {args.moments} trenutkov.\n"
+    for voltage_level_kv in voltage_levels_kv:
+        print_level_results(
+            rows=rows,
+            voltage_level_kv=voltage_level_kv,
+            threshold_pu=args.threshold_pu,
+            number_of_moments=args.moments,
+            minimum_separation=timedelta(hours=args.min_separation_hours),
+            rank_by=args.rank_by,
+            top_rtps_limit=args.top_rtps,
         )
-
-    for index, moment in enumerate(selected_times, start=1):
-        moment_rows = details.filter(pl.col("time") == moment)
-        above = moment_rows.filter(pl.col("U_pu") > args.threshold_pu)
-        maximum_pu = moment_rows.get_column("U_pu").max()
-        highest = moment_rows.filter(
-            (pl.col("U_pu") - maximum_pu).abs() < 1e-9
-        )
-
-        print(f"\n{index}. TRENUTEK: {moment}")
-        print(f"   Trafov nad pragom: {above.height}")
-        print(f"   Veljavnih VN meritev v trenutku: {moment_rows.height}")
-        print("   Najvisja napetost v trenutku:")
-        for row in highest.iter_rows(named=True):
-            print(
-                f"     - {format_transformer(row)} | {row['napetost_kv']} kV nivo | "
-                f"U = {row['U_kV']:.3f} kV | U = {row['U_pu']:.5f} pu"
-            )
-
-        print(f"   Vsi transformatorji nad {args.threshold_pu:.4f} pu:")
-        for row in above.iter_rows(named=True):
-            print(
-                f"     - {format_transformer(row):30s} | "
-                f"nivo {row['napetost_kv']:>3} kV | "
-                f"U = {row['U_kV']:>8.3f} kV | U = {row['U_pu']:.5f} pu"
-            )
 
     print("\n" + "=" * 88)
     print("Konec. Skripta ni ustvarila nobene izhodne datoteke.")
