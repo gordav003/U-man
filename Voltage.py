@@ -8,7 +8,11 @@ import polars as pl
 
 
 HV_LEVELS_KV = (110, 220, 400)
-DEFAULT_THRESHOLD_PU = 1.05
+DEFAULT_THRESHOLDS_PU = {
+    110: 1.12,
+    220: 1.11,
+    400: 1.05,
+}
 
 
 def default_input_path() -> Path:
@@ -39,8 +43,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--threshold-pu",
         type=float,
-        default=DEFAULT_THRESHOLD_PU,
-        help="Prag visoke napetosti v pu (privzeto: 1.05).",
+        default=None,
+        help=(
+            "Po zelji preglasi vse tri privzete pragove z enim skupnim pragom."
+        ),
+    )
+    parser.add_argument(
+        "--threshold-110-pu",
+        type=float,
+        default=None,
+        help="Po zelji preglasi privzeti prag 1.12 pu za nivo 110 kV.",
+    )
+    parser.add_argument(
+        "--threshold-220-pu",
+        type=float,
+        default=None,
+        help="Po zelji preglasi privzeti prag 1.11 pu za nivo 220 kV.",
+    )
+    parser.add_argument(
+        "--threshold-400-pu",
+        type=float,
+        default=None,
+        help="Po zelji preglasi privzeti prag 1.05 pu za nivo 400 kV.",
     )
     parser.add_argument(
         "--moments",
@@ -282,6 +306,22 @@ def main() -> None:
     args = parse_args()
     parquet_path = args.input.resolve()
     voltage_levels_kv = (110,) if args.only_110 else HV_LEVELS_KV
+    thresholds_pu = DEFAULT_THRESHOLDS_PU.copy()
+
+    if args.threshold_pu is not None:
+        thresholds_pu = {
+            voltage_level_kv: args.threshold_pu
+            for voltage_level_kv in HV_LEVELS_KV
+        }
+
+    level_overrides = {
+        110: args.threshold_110_pu,
+        220: args.threshold_220_pu,
+        400: args.threshold_400_pu,
+    }
+    for voltage_level_kv, override in level_overrides.items():
+        if override is not None:
+            thresholds_pu[voltage_level_kv] = override
 
     if not parquet_path.is_file():
         raise FileNotFoundError(f"Vhodna datoteka ne obstaja: {parquet_path}")
@@ -291,6 +331,8 @@ def main() -> None:
         raise ValueError("--min-separation-hours ne sme biti negativen.")
     if args.top_rtps < 1:
         raise ValueError("--top-rtps mora biti vsaj 1.")
+    if any(threshold <= 0 for threshold in thresholds_pu.values()):
+        raise ValueError("Vsi napetostni pragovi morajo biti vecji od 0 pu.")
 
     rows = transformer_rows(parquet_path, voltage_levels_kv)
 
@@ -298,7 +340,14 @@ def main() -> None:
     print("VISOKE VN NAPETOSTI TRANSFORMATORJEV")
     print(f"Vhod: {parquet_path}")
     print(f"VN nivoji: {', '.join(map(str, voltage_levels_kv))} kV")
-    print(f"Prag: > {args.threshold_pu:.4f} pu")
+    print(
+        "Pragovi: "
+        + "; ".join(
+            f"{voltage_level_kv} kV > "
+            f"{thresholds_pu[voltage_level_kv]:.4f} pu"
+            for voltage_level_kv in voltage_levels_kv
+        )
+    )
     print(f"Razvrscanje: {args.rank_by}")
     print(f"Najvec RTP-jev v posameznem izpisu: {args.top_rtps}")
     print(f"Najmanjsi razmik med dogodki: {args.min_separation_hours:g} h")
@@ -308,7 +357,7 @@ def main() -> None:
         print_level_results(
             rows=rows,
             voltage_level_kv=voltage_level_kv,
-            threshold_pu=args.threshold_pu,
+            threshold_pu=thresholds_pu[voltage_level_kv],
             number_of_moments=args.moments,
             minimum_separation=timedelta(hours=args.min_separation_hours),
             rank_by=args.rank_by,
