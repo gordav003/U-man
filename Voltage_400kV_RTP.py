@@ -16,7 +16,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import polars as pl
 
-from Voltage_RTP_Povezave import (
+from voltage_data import (
     DEFAULT_END,
     DEFAULT_MAX_GAP,
     DEFAULT_START,
