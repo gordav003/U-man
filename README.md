@@ -139,3 +139,28 @@ All scripts accept `--help`. The preprocessing scripts write to a directory unde
 the input directory by default; use `--output-dir` to select another location.
 `Reactive_Power_Analysis.py` saves charts only as editable vector SVG files.
 Analytical results remain available in the console; CSV files are not generated.
+
+## Interaktivni izbirnik Parquet grafov
+
+Za poljubno sestavljanje grafov iz pripravljenih komponent zaženi:
+
+```powershell
+python Parquet_Plotter.py
+```
+
+V oknu poišči komponento (transformator, daljnovod, generator, merilno mesto ali
+TAP), obkljukaj meritev, določi obdobje in jo dodaj v zbirko. Vsak element zbirke
+ima lahko drugo komponento, meritev in obdobje. Zbirko lahko izrišeš v enem oknu,
+shraniš kot PNG, SVG ali PDF ter shraniš izbor v JSON za ponovno uporabo.
+
+Če so Parquet datoteke drugje, mapo dodaj v aplikaciji ali jo podaj ob zagonu:
+
+```powershell
+python Parquet_Plotter.py --data-dir "C:\pot\do\parquetov"
+```
+
+Preizkus branja brez odprtja grafičnega okna:
+
+```powershell
+python Parquet_Plotter.py --smoke-test
+```
