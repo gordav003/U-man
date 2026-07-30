@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, time
 from pathlib import Path
@@ -87,6 +87,43 @@ def component_type(path: Path) -> str:
 
 def display_component_name(path: Path) -> str:
     return path.stem.replace("_", " ")
+
+
+def component_plot_label(path: Path, *, include_asset: bool = False) -> str:
+    """Vrne kratko oznako lokacije za navpično oznako ob grafu."""
+    parts = path.stem.split("_")
+    if len(parts) < 2:
+        return path.stem
+
+    component_kind = parts[0].upper()
+    body = parts[1:]
+    voltage_index = next(
+        (index for index, part in enumerate(body) if part.isdigit()),
+        None,
+    )
+
+    if voltage_index is None:
+        return " ".join(body)
+
+    location_from = " ".join(body[:voltage_index])
+    after_voltage = body[voltage_index + 1 :]
+
+    if component_kind == "LINE" and after_voltage:
+        destination_parts = after_voltage[:-1] if after_voltage[-1].isdigit() else after_voltage
+        destination = " ".join(destination_parts)
+        return (
+            f"{location_from}–{destination}"
+            if destination
+            else location_from
+        )
+
+    if component_kind == "TR":
+        asset = " ".join(after_voltage)
+        if include_asset and asset:
+            return f"{location_from}\n{asset}"
+        return location_from
+
+    return location_from or " ".join(body)
 
 
 def discover_parquet_files(directories: list[Path]) -> list[Path]:
@@ -253,11 +290,6 @@ def load_plot_data(request: PlotRequest) -> tuple[list[datetime], list[float | N
     )
 
 
-def default_plot_title(request: PlotRequest) -> str:
-    measurement = MEASUREMENT_LABELS.get(request.measurement, request.measurement)
-    return f"{display_component_name(request.path)} — {measurement}"
-
-
 def save_configuration(path: Path, requests: list[PlotRequest]) -> None:
     payload = {
         "version": 1,
@@ -286,6 +318,147 @@ def load_configuration(path: Path) -> list[PlotRequest]:
     return requests
 
 
+def build_plot_figure(requests: list[PlotRequest]):
+    from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
+    from matplotlib.figure import Figure
+    from matplotlib.ticker import MaxNLocator
+
+    try:
+        periods = {
+            (
+                parse_date_text(request.start, end_of_day=False),
+                parse_date_text(request.end, end_of_day=True),
+            )
+            for request in requests
+        }
+        shared_time_axis = len(periods) == 1
+    except ValueError:
+        shared_time_axis = False
+
+    figure = Figure(
+        figsize=(10, max(3.2, 1.8 * len(requests))),
+        constrained_layout=True,
+        facecolor="white",
+    )
+    axes = figure.subplots(
+        nrows=len(requests),
+        ncols=1,
+        squeeze=False,
+        sharex=shared_time_axis,
+    ).ravel()
+    errors: list[str] = []
+    location_counts = Counter(
+        component_plot_label(request.path)
+        for request in requests
+    )
+
+    for axis, request in zip(axes, requests):
+        basic_location = component_plot_label(request.path)
+        location = component_plot_label(
+            request.path,
+            include_asset=location_counts[basic_location] > 1,
+        )
+        try:
+            timestamps, values = load_plot_data(request)
+            valid_count = sum(value is not None for value in values)
+            if not timestamps or valid_count == 0:
+                axis.text(
+                    0.5,
+                    0.5,
+                    "V izbranem obdobju ni podatkov.",
+                    transform=axis.transAxes,
+                    ha="center",
+                    va="center",
+                )
+            else:
+                axis.plot(
+                    timestamps,
+                    values,
+                    linewidth=1.25,
+                    color="#145da0",
+                )
+
+            unit = MEASUREMENT_UNITS.get(request.measurement, "")
+            axis.set_ylabel(
+                location,
+                rotation=90,
+                fontsize=9,
+                fontweight="bold",
+                color="#263238",
+                labelpad=12,
+            )
+            measurement_label = (
+                f"{request.measurement} [{unit}]"
+                if unit
+                else request.measurement
+            )
+            axis.text(
+                0.006,
+                0.92,
+                measurement_label,
+                transform=axis.transAxes,
+                ha="left",
+                va="top",
+                fontsize=8,
+                color="#455a64",
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.78,
+                    "pad": 1.5,
+                },
+            )
+            axis.set_facecolor("white")
+            axis.yaxis.set_major_locator(MaxNLocator(nbins=4))
+            axis.grid(axis="y", color="#cfd8dc", linewidth=0.7, alpha=0.7)
+            axis.grid(axis="x", color="#eceff1", linewidth=0.6, alpha=0.8)
+            axis.tick_params(
+                axis="x",
+                labelrotation=0,
+                labelsize=8,
+                colors="#455a64",
+                length=3,
+            )
+            axis.tick_params(
+                axis="y",
+                labelsize=8,
+                colors="#455a64",
+                length=3,
+            )
+            axis.spines["top"].set_visible(False)
+            axis.spines["right"].set_visible(False)
+            axis.spines["left"].set_color("#90a4ae")
+            axis.spines["bottom"].set_color("#90a4ae")
+            locator = AutoDateLocator(minticks=3, maxticks=7)
+            axis.xaxis.set_major_locator(locator)
+            axis.xaxis.set_major_formatter(ConciseDateFormatter(locator))
+        except Exception as exc:
+            errors.append(f"{request.path.name}: {exc}")
+            axis.text(
+                0.5,
+                0.5,
+                f"Napaka:\n{exc}",
+                transform=axis.transAxes,
+                ha="center",
+                va="center",
+                color="darkred",
+                wrap=True,
+            )
+            axis.set_ylabel(
+                location,
+                rotation=90,
+                fontsize=9,
+                fontweight="bold",
+                labelpad=12,
+            )
+
+    if shared_time_axis and len(axes) > 1:
+        for axis in axes[:-1]:
+            axis.tick_params(axis="x", labelbottom=False)
+
+    return figure, errors
+
+
 def launch_app(initial_directories: list[Path]) -> None:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
@@ -295,7 +468,6 @@ def launch_app(initial_directories: list[Path]) -> None:
             FigureCanvasTkAgg,
             NavigationToolbar2Tk,
         )
-        from matplotlib.figure import Figure
     except ImportError as exc:
         raise RuntimeError(
             "Manjka knjižnica 'matplotlib'. Namesti odvisnosti z ukazom:\n"
@@ -325,7 +497,6 @@ def launch_app(initial_directories: list[Path]) -> None:
             self.period_info_var = tk.StringVar(value="Izberi komponento.")
             self.start_var = tk.StringVar()
             self.end_var = tk.StringVar()
-            self.title_var = tk.StringVar()
             self.status_var = tk.StringVar(value="Pripravljeno.")
 
             self._build_ui()
@@ -434,15 +605,11 @@ def launch_app(initial_directories: list[Path]) -> None:
             ttk.Entry(options, textvariable=self.end_var).grid(
                 row=3, column=1, sticky="ew", pady=(4, 0)
             )
-            ttk.Label(options, text="Naslov:").grid(row=4, column=0, sticky="w")
-            ttk.Entry(options, textvariable=self.title_var).grid(
-                row=4, column=1, sticky="ew", pady=(4, 0)
-            )
             ttk.Button(
                 options,
                 text="Dodaj izbrane meritve v zbirko",
                 command=self.add_requests,
-            ).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+            ).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
             right = ttk.Frame(main)
             right.grid(row=1, column=1, sticky="nsew")
@@ -577,7 +744,6 @@ def launch_app(initial_directories: list[Path]) -> None:
                 f"Razpoložljivo: {start:%d.%m.%Y %H:%M} – "
                 f"{end:%d.%m.%Y %H:%M}"
             )
-            self.title_var.set("")
             self.status_var.set(f"Izbrano: {path.name}")
 
         def add_requests(self) -> None:
@@ -601,16 +767,12 @@ def launch_app(initial_directories: list[Path]) -> None:
                 return
 
             for measurement in measurements:
-                title = self.title_var.get().strip()
-                if title and len(measurements) > 1:
-                    title = f"{title} — {measurement}"
                 self.requests.append(
                     PlotRequest(
                         file=str(path),
                         measurement=measurement,
                         start=self.start_var.get().strip(),
                         end=self.end_var.get().strip(),
-                        title=title,
                     )
                 )
             self.refresh_queue()
@@ -698,64 +860,7 @@ def launch_app(initial_directories: list[Path]) -> None:
 
             self.status_var.set("Berem podatke in pripravljam grafe ...")
             self.root.update_idletasks()
-            figure = Figure(
-                figsize=(10, max(3.2, 2.8 * len(self.requests))),
-                constrained_layout=True,
-            )
-            axes = figure.subplots(
-                nrows=len(self.requests),
-                ncols=1,
-                squeeze=False,
-            ).ravel()
-            errors: list[str] = []
-
-            for axis, request in zip(axes, self.requests):
-                try:
-                    timestamps, values = load_plot_data(request)
-                    valid_count = sum(value is not None for value in values)
-                    if not timestamps or valid_count == 0:
-                        axis.text(
-                            0.5,
-                            0.5,
-                            "V izbranem obdobju ni podatkov.",
-                            transform=axis.transAxes,
-                            ha="center",
-                            va="center",
-                        )
-                    else:
-                        axis.plot(
-                            timestamps,
-                            values,
-                            linewidth=1.0,
-                            color="#1769aa",
-                        )
-                    axis.set_title(
-                        request.title or default_plot_title(request),
-                        fontsize=10,
-                        loc="left",
-                    )
-                    unit = MEASUREMENT_UNITS.get(request.measurement, "")
-                    axis.set_ylabel(
-                        f"{request.measurement} [{unit}]"
-                        if unit
-                        else request.measurement
-                    )
-                    axis.grid(True, alpha=0.25)
-                    axis.tick_params(axis="x", labelrotation=20, labelsize=8)
-                    axis.tick_params(axis="y", labelsize=8)
-                except Exception as exc:
-                    errors.append(f"{request.path.name}: {exc}")
-                    axis.text(
-                        0.5,
-                        0.5,
-                        f"Napaka:\n{exc}",
-                        transform=axis.transAxes,
-                        ha="center",
-                        va="center",
-                        color="darkred",
-                        wrap=True,
-                    )
-                    axis.set_title(default_plot_title(request), fontsize=10, loc="left")
+            figure, errors = build_plot_figure(self.requests)
 
             self._clear_plot_frame()
             self.figure = figure
