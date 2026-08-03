@@ -65,7 +65,7 @@ INCLUDE_MULTI_VOLTAGE_TRANSFORMERS = False
 
 # Include only HV/MV transformers in the analysis.
 # A 110 kV file is a candidate only when a matching MV file also exists
-# for the same RTP and transformer, for example:
+# and no side above 110 kV exists for the same RTP and transformer, for example:
 #   TR_PRIMSKOVOGIS_110_TR1.parquet + TR_PRIMSKOVOGIS_20_TR1.parquet
 ONLY_110_MV_TRANSFORMERS = True
 
@@ -258,6 +258,7 @@ def build_110_mv_candidates(all_files):
     Criteria:
       - a transformer file exists at HV_VOLTAGE_KV, for example 110 kV
       - a transformer file exists at one of MV_VOLTAGE_KV_CANDIDATES
+      - no file for the same transformer exists above HV_VOLTAGE_KV
       - the matching key is (rtp, transformer_id), for example (PRIMSKOVOGIS, TR1)
 
     Return a list of triples:
@@ -298,6 +299,25 @@ def build_110_mv_candidates(all_files):
 
         hv_recs = by_voltage.get(HV_VOLTAGE_KV, [])
         if not hv_recs:
+            continue
+
+        # A 110 kV winding with another winding above 110 kV belongs to an
+        # HV/HV or multi-winding transformer, even if it also has an MV
+        # tertiary winding.  For example, DIVACA TR211 has 220, 110, and
+        # 10 kV component files and must not be classified as a 110/MV unit.
+        higher_voltages = sorted(
+            voltage_kv for voltage_kv in by_voltage if voltage_kv > HV_VOLTAGE_KV
+        )
+        if higher_voltages:
+            for rec in hv_recs:
+                excluded_110.append({
+                    "file": rec["path"].name,
+                    "rtp": rtp,
+                    "transformer_id": transformer_id,
+                    "reason": "higher_voltage_side_present",
+                    "available_voltages_for_same_rtp_transformer": sorted(by_voltage.keys()),
+                    "higher_voltages_kv": higher_voltages,
+                })
             continue
 
         found_mv_voltage = None
@@ -350,8 +370,17 @@ def build_110_mv_candidates(all_files):
         "ignored_files": len(ignored_records),
         "keys_with_tr_files": len(by_key),
         "candidate_110_mv": len(candidate_pairs),
-        "excluded_110_without_mv": len(excluded_110),
-        "excluded_110_without_mv_rows": excluded_110,
+        "excluded_110_not_strict_110_mv": len(excluded_110),
+        "excluded_110_without_mv": sum(
+            row["reason"] == "no_matching_MV_file" for row in excluded_110
+        ),
+        "excluded_110_with_higher_voltage_side": sum(
+            row["reason"] == "higher_voltage_side_present" for row in excluded_110
+        ),
+        "excluded_110_without_mv_rows": [
+            row for row in excluded_110 if row["reason"] == "no_matching_MV_file"
+        ],
+        "excluded_110_rows": excluded_110,
         "duplicate_mv_rows": duplicate_mv_rows,
         "ignored_rows": ignored_records,
     }
@@ -919,8 +948,11 @@ else:
         "ignored_files": None,
         "keys_with_tr_files": None,
         "candidate_110_mv": len(candidate_files),
+        "excluded_110_not_strict_110_mv": None,
         "excluded_110_without_mv": None,
+        "excluded_110_with_higher_voltage_side": None,
         "excluded_110_without_mv_rows": [],
+        "excluded_110_rows": [],
         "duplicate_mv_rows": [],
         "ignored_rows": [],
     }
@@ -1201,6 +1233,10 @@ print("CSV output:          disabled")
 print(f"Output directory:    {OUTPUT_DIR}")
 if ONLY_110_MV_TRANSFORMERS:
     print(f"110 kV files excluded without an MV pair: {candidate_stats['excluded_110_without_mv']}")
+    print(
+        "110 kV files excluded because a higher-voltage side exists: "
+        f"{candidate_stats['excluded_110_with_higher_voltage_side']}"
+    )
 
 if not summary_df.empty:
     print()

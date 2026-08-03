@@ -95,7 +95,7 @@ def parse_meta_from_filename(path: Path):
 
 
 def build_110_mv_candidates(all_files):
-    """Return the 110 kV files that have a matching 10, 20, or 35 kV file."""
+    """Return strict 110/MV units with no winding above 110 kV."""
     by_key = {}
     for path in all_files:
         meta = parse_meta_from_filename(path)
@@ -111,6 +111,16 @@ def build_110_mv_candidates(all_files):
     for by_voltage in by_key.values():
         hv_records = by_voltage.get(HV_VOLTAGE_KV, [])
         if not hv_records:
+            continue
+
+        # Reject HV/HV and multi-winding units such as DIVACA TR211
+        # (220/110/10 kV).  Its 10 kV tertiary must not make the 110 kV
+        # winding look like a distribution 110/MV transformer.
+        has_higher_voltage_side = any(
+            voltage_kv > HV_VOLTAGE_KV for voltage_kv in by_voltage
+        )
+        if has_higher_voltage_side:
+            excluded_110_count += len(hv_records)
             continue
 
         has_mv_pair = any(
@@ -298,7 +308,7 @@ def main():
         raise RuntimeError("No matching 110/MV transformer pairs were found.")
 
     print(f"Selected 110/MV transformer files: {len(candidates)}")
-    print(f"Excluded 110 kV files without an MV pair: {excluded_count}")
+    print(f"Excluded 110 kV files that are not strict 110/MV units: {excluded_count}")
     print("Reading transformer measurements ...")
 
     q_matrix, column_meta = build_q_matrix(candidates)
