@@ -140,6 +140,27 @@ the input directory by default; use `--output-dir` to select another location.
 `Reactive_Power_Analysis.py` saves charts only as editable vector SVG files.
 Analytical results remain available in the console; CSV files are not generated.
 
+## Interaktivna kompenzacija jalove moči RTP
+
+Za primerjavo izvornega stanja z dodano kapacitivno ali induktivno jalovo močjo
+zaženi:
+
+```powershell
+python Reactive_Power_Compensation_GUI.py
+```
+
+V oknu izberi mapo `component_files` in RTP, vnesi kapacitivno oziroma
+induktivno moč v MVAr ter klikni **Izračunaj in izriši**. Uporabljen je predznak
+`Q_novi = Q_izmerjeni + Q_induktivni - Q_kapacitivni`. Graf je mogoče shraniti
+kot SVG, PNG ali PDF, rezultate posameznih merilnih točk pa izvoziti v CSV.
+
+Če so podatki v drugi mapi, jo izberi v oknu ali podaj ob zagonu:
+
+```powershell
+python Reactive_Power_Compensation_GUI.py `
+  --data-dir "C:\pot\do\Uman_parquet\component_files"
+```
+
 ## Interaktivni izbirnik Parquet grafov
 
 Za poljubno sestavljanje grafov iz pripravljenih komponent zaženi:
