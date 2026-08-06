@@ -33,7 +33,7 @@ def default_component_dir() -> Path:
     return (
         Path(__file__).resolve().parent.parent
         / "Uman meritve"
-        / "2026_06_17  SCADA meritve 4600"
+        / "Pridobljeno in urejeno"
         / "urejeno"
         / "Uman_parquet"
         / "component_files"

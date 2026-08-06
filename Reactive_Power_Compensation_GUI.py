@@ -26,7 +26,7 @@ def default_data_directory() -> Path:
     return (
         project_root()
         / "Uman meritve"
-        / "2026_06_17  SCADA meritve 4600"
+        / "Pridobljeno in urejeno"
         / "urejeno"
         / "Uman_parquet"
         / "component_files"

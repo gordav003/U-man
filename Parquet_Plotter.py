@@ -15,9 +15,9 @@ TIME_COLUMN = "time"
 QUALITY_FILTERED_TAP_COLUMNS = {"TAP"}
 PREFERRED_MEASUREMENTS = ("U", "P", "Q", "TAP")
 MEASUREMENT_LABELS = {
-    "U": "Napetost U [kV]",
-    "P": "Delovna moč P [MW]",
-    "Q": "Jalova moč Q [MVAr]",
+    "U": "Napetost U/kV",
+    "P": "Delovna moč P/MW",
+    "Q": "Jalova moč Q/MVAr",
     "TAP": "Položaj regulatorja TAP",
 }
 MEASUREMENT_UNITS = {
@@ -25,6 +25,12 @@ MEASUREMENT_UNITS = {
     "P": "MW",
     "Q": "MVAr",
     "TAP": "",
+}
+MEASUREMENT_COLORS = {
+    "P": "#1f77b4",    # modra
+    "Q": "#ff7f0e",    # oranžna
+    "U": "#2ca02c",    # zelena
+    "TAP": "#6a3d9a",  # vijolična
 }
 
 
@@ -36,7 +42,7 @@ def default_data_directories() -> list[Path]:
     prepared = (
         project_root()
         / "Uman meritve"
-        / "2026_06_17  SCADA meritve 4600"
+        / "Pridobljeno in urejeno"
         / "urejeno"
     )
     return [
@@ -319,9 +325,8 @@ def load_configuration(path: Path) -> list[PlotRequest]:
 
 
 def build_plot_figure(requests: list[PlotRequest]):
-    from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
+    from matplotlib.dates import DateFormatter, DayLocator
     from matplotlib.figure import Figure
-    from matplotlib.ticker import MaxNLocator
 
     try:
         periods = {
@@ -336,8 +341,7 @@ def build_plot_figure(requests: list[PlotRequest]):
         shared_time_axis = False
 
     figure = Figure(
-        figsize=(10, max(3.2, 1.8 * len(requests))),
-        constrained_layout=True,
+        figsize=(12, max(3.75, 3.5 * len(requests))),
         facecolor="white",
     )
     axes = figure.subplots(
@@ -361,6 +365,12 @@ def build_plot_figure(requests: list[PlotRequest]):
         try:
             timestamps, values = load_plot_data(request)
             valid_count = sum(value is not None for value in values)
+            unit = MEASUREMENT_UNITS.get(request.measurement, "")
+            measurement_label = (
+                f"{request.measurement}/{unit}"
+                if unit
+                else request.measurement
+            )
             if not timestamps or valid_count == 0:
                 axis.text(
                     0.5,
@@ -371,67 +381,52 @@ def build_plot_figure(requests: list[PlotRequest]):
                     va="center",
                 )
             else:
-                axis.plot(
+                line, = axis.plot(
                     timestamps,
                     values,
-                    linewidth=1.25,
-                    color="#145da0",
+                    linewidth=1.2,
+                    color=MEASUREMENT_COLORS.get(
+                        request.measurement,
+                        "#1f77b4",
+                    ),
+                    label=measurement_label,
+                )
+                axis.legend(
+                    handles=[line],
+                    loc="upper left",
+                    fontsize=10,
                 )
 
-            unit = MEASUREMENT_UNITS.get(request.measurement, "")
             axis.set_ylabel(
-                location,
+                f"{location}\n{measurement_label}",
                 rotation=90,
-                fontsize=9,
-                fontweight="bold",
-                color="#263238",
-                labelpad=12,
-            )
-            measurement_label = (
-                f"{request.measurement} [{unit}]"
-                if unit
-                else request.measurement
-            )
-            axis.text(
-                0.006,
-                0.92,
-                measurement_label,
-                transform=axis.transAxes,
-                ha="left",
-                va="top",
-                fontsize=8,
-                color="#455a64",
-                bbox={
-                    "facecolor": "white",
-                    "edgecolor": "none",
-                    "alpha": 0.78,
-                    "pad": 1.5,
-                },
+                fontsize=11,
             )
             axis.set_facecolor("white")
-            axis.yaxis.set_major_locator(MaxNLocator(nbins=4))
-            axis.grid(axis="y", color="#cfd8dc", linewidth=0.7, alpha=0.7)
-            axis.grid(axis="x", color="#eceff1", linewidth=0.6, alpha=0.8)
+            axis.grid(True, alpha=0.35)
             axis.tick_params(
                 axis="x",
-                labelrotation=0,
-                labelsize=8,
-                colors="#455a64",
-                length=3,
+                labelrotation=45,
+                labelsize=9,
             )
             axis.tick_params(
                 axis="y",
-                labelsize=8,
-                colors="#455a64",
-                length=3,
+                labelsize=10,
             )
-            axis.spines["top"].set_visible(False)
-            axis.spines["right"].set_visible(False)
-            axis.spines["left"].set_color("#90a4ae")
-            axis.spines["bottom"].set_color("#90a4ae")
-            locator = AutoDateLocator(minticks=3, maxticks=7)
-            axis.xaxis.set_major_locator(locator)
-            axis.xaxis.set_major_formatter(ConciseDateFormatter(locator))
+
+            start = parse_date_text(request.start, end_of_day=False)
+            end = parse_date_text(request.end, end_of_day=True)
+            axis.xaxis.set_major_locator(DayLocator(interval=1))
+            axis.xaxis.set_major_formatter(DateFormatter("%d %b"))
+            axis.set_xlim(start, end)
+            year_label = (
+                str(start.year)
+                if start.year == end.year
+                else f"{start.year}–{end.year}"
+            )
+            axis.set_xlabel(f"Time / {year_label}", fontsize=11)
+            for tick_label in axis.get_xticklabels():
+                tick_label.set_horizontalalignment("right")
         except Exception as exc:
             errors.append(f"{request.path.name}: {exc}")
             axis.text(
@@ -447,15 +442,15 @@ def build_plot_figure(requests: list[PlotRequest]):
             axis.set_ylabel(
                 location,
                 rotation=90,
-                fontsize=9,
-                fontweight="bold",
-                labelpad=12,
+                fontsize=11,
             )
 
     if shared_time_axis and len(axes) > 1:
         for axis in axes[:-1]:
             axis.tick_params(axis="x", labelbottom=False)
+            axis.set_xlabel("")
 
+    figure.tight_layout()
     return figure, errors
 
 

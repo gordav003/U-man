@@ -185,3 +185,33 @@ Preizkus branja brez odprtja grafičnega okna:
 ```powershell
 python Parquet_Plotter.py --smoke-test
 ```
+
+## Korelacija Q–U po zveznih segmentih
+
+Korelacija sprememb jalove moči in napetosti se računa ločeno za vsak zvezni
+15-minutni merilni segment. Časovna vrzel vedno začne nov segment; podatki pred
+in po vrzeli se zato ne združijo v isti korelacijski koeficient ali regresijo.
+
+```powershell
+python Korelacija_dQ_dU_15min.py `
+  --input-file "C:\pot\do\TR_JESENICE_110_TR1.parquet" `
+  --start 2025-10-18 `
+  --end 2025-10-18 `
+  --min-segment-points 10
+```
+
+Glavni CSV je indeks vseh zaznanih segmentov. Za vsak dovolj dolg in
+spremenljiv segment nastane še lastna mapa z meritvami, spremembami, statistiko
+ter grafoma. Prekratki in konstantni segmenti ostanejo dokumentirani kot
+preskočeni.
+
+## Organizacija kode
+
+- `voltage_data.py` vsebuje skupno odkrivanje elementov, topologijo in branje
+  napetostnih vrst za napetostne analize.
+- `continuous_segments.py` je skupna implementacija segmentiranja za Q–U in
+  400/110-kV korelacijsko analizo.
+- `ureditev_meritev.py` pripravlja meritve P/Q/U, `ureditev_TAP_meritev.py` pa
+  diskretne položaje regulatorjev. Ločeni sta namenoma, ker imata različna
+  pravila prepoznavanja, validacije in izvoza.
+- Vse knjižnice so navedene v enem `requirements.txt`.
