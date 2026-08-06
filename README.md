@@ -215,3 +215,9 @@ preskočeni.
   diskretne položaje regulatorjev. Ločeni sta namenoma, ker imata različna
   pravila prepoznavanja, validacije in izvoza.
 - Vse knjižnice so navedene v enem `requirements.txt`.
+
+## Razvoj in prispevanje
+
+Pravila za veje, commite, pull requeste in osnovna preverjanja so opisana v
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Veja `main` je edina trajna veja;
+zaključene razvojne veje se po združitvi izbrišejo.
