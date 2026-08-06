@@ -9,8 +9,8 @@ import polars as pl
 
 HV_LEVELS_KV = (110, 220, 400)
 DEFAULT_THRESHOLDS_PU = {
-    110: 1.12,
-    220: 1.11,
+    110: 1.09,
+    220: 1.10,
     400: 1.05,
 }
 
@@ -20,7 +20,7 @@ def default_input_path() -> Path:
     return (
         project_root
         / "Uman meritve"
-        / "2026_06_17  SCADA meritve 4600"
+        / "Pridobljeno in urejeno"
         / "urejeno"
         / "Uman_parquet"
         / "transformers_wide.parquet"

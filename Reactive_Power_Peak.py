@@ -1,6 +1,10 @@
 import argparse
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
 
 
@@ -16,6 +20,19 @@ VALUES_ARE_IN_KILO = False
 # data outage from creating a false peak. Use --min-coverage 0 to disable it.
 DEFAULT_MIN_COVERAGE = 0.95
 DEFAULT_TOP_COUNT = 20
+DEFAULT_PLOT_NAME = "Reactive_Power_Peak_Urejena_Vsota.svg"
+DEFAULT_EVENT_THRESHOLD_MVAR = 160.0
+DEFAULT_EVENTS_DIR_NAME = "Reactive_Power_Events_150MVAr"
+EVENT_SUMMARY_COLUMNS = [
+    "event",
+    "start",
+    "end",
+    "duration_hours",
+    "measurement_points",
+    "peak_time",
+    "peak_Q_MVAr",
+    "peak_coverage_pct",
+]
 
 
 def parse_arguments():
@@ -45,6 +62,33 @@ def parse_arguments():
         default=DEFAULT_TOP_COUNT,
         help=f"Number of RTPs to print (default: {DEFAULT_TOP_COUNT}).",
     )
+    parser.add_argument(
+        "--plot-output",
+        type=Path,
+        default=None,
+        help=(
+            "Output path for the ordered RTP reactive-power plot "
+            f"(default: <input_dir>/{DEFAULT_PLOT_NAME})."
+        ),
+    )
+    parser.add_argument(
+        "--event-threshold-mvar",
+        type=float,
+        default=DEFAULT_EVENT_THRESHOLD_MVAR,
+        help=(
+            "Minimum magnitude of the capacitive system flow used to detect "
+            f"events (default: {DEFAULT_EVENT_THRESHOLD_MVAR:g} MVAr)."
+        ),
+    )
+    parser.add_argument(
+        "--events-output-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory for event plots and the CSV summary "
+            f"(default: <input_dir>/{DEFAULT_EVENTS_DIR_NAME})."
+        ),
+    )
     args = parser.parse_args()
     args.input_dir = args.input_dir.expanduser().resolve()
 
@@ -54,6 +98,16 @@ def parse_arguments():
         parser.error("--min-coverage must be between 0 and 1.")
     if args.top < 1:
         parser.error("--top must be at least 1.")
+    if args.event_threshold_mvar <= 0:
+        parser.error("--event-threshold-mvar must be greater than 0.")
+    if args.plot_output is None:
+        args.plot_output = args.input_dir / DEFAULT_PLOT_NAME
+    else:
+        args.plot_output = args.plot_output.expanduser().resolve()
+    if args.events_output_dir is None:
+        args.events_output_dir = args.input_dir / DEFAULT_EVENTS_DIR_NAME
+    else:
+        args.events_output_dir = args.events_output_dir.expanduser().resolve()
 
     return args
 
@@ -197,29 +251,15 @@ def build_q_matrix(candidates):
     return matrix, column_meta
 
 
-def print_peak_report(q_matrix, column_meta, min_coverage, top_count):
-    transformer_count = q_matrix.shape[1]
-    available_count = q_matrix.notna().sum(axis=1)
-    coverage = available_count / transformer_count
-    total_q = q_matrix.sum(axis=1, min_count=1)
-
-    valid = total_q.notna() & (coverage >= min_coverage)
-    if not valid.any():
-        raise RuntimeError(
-            "No timestamps meet the requested minimum measurement coverage "
-            f"({min_coverage:.1%})."
-        )
-
-    peak_time = total_q[valid].idxmin()
-    peak_total_q = float(total_q.loc[peak_time])
-    peak_values = q_matrix.loc[peak_time].dropna()
-
+def calculate_contributions_at_time(q_matrix, column_meta, timestamp):
+    """Calculate summed RTP contributions at one selected timestamp."""
+    values_at_time = q_matrix.loc[timestamp].dropna()
     rows = []
     for rtp in sorted({meta["rtp"] for meta in column_meta.values()}):
         columns = [
             column for column, meta in column_meta.items() if meta["rtp"] == rtp
         ]
-        values = peak_values.reindex(columns).dropna()
+        values = values_at_time.reindex(columns).dropna()
         if values.empty:
             continue
         rows.append(
@@ -231,9 +271,14 @@ def print_peak_report(q_matrix, column_meta, min_coverage, top_count):
             }
         )
 
-    contributions = pd.DataFrame(rows).sort_values(
+    return pd.DataFrame(rows).sort_values(
         ["Q_MVAr", "RTP"], ascending=[True, True]
     )
+
+
+def add_contribution_shares(contributions, total_q):
+    """Add gross-capacitive and net-flow shares to an RTP contribution table."""
+    contributions = contributions.copy()
     capacitive_total = -contributions.loc[
         contributions["Q_MVAr"] < 0, "Q_MVAr"
     ].sum()
@@ -249,12 +294,177 @@ def print_peak_report(q_matrix, column_meta, min_coverage, top_count):
 
     # This net share can exceed 100% in total for negative RTPs when positive
     # RTP flows partly offset the system's capacitive peak.
-    if peak_total_q != 0:
+    if total_q != 0:
         contributions["share_net_peak_pct"] = (
-            contributions["Q_MVAr"] / peak_total_q * 100.0
+            contributions["Q_MVAr"] / total_q * 100.0
         )
     else:
         contributions["share_net_peak_pct"] = float("nan")
+
+    return contributions, capacitive_total
+
+
+def calculate_peak_contributions(q_matrix, column_meta, min_coverage):
+    transformer_count = q_matrix.shape[1]
+    available_count = q_matrix.notna().sum(axis=1)
+    coverage = available_count / transformer_count
+    total_q = q_matrix.sum(axis=1, min_count=1)
+
+    valid = total_q.notna() & (coverage >= min_coverage)
+    if not valid.any():
+        raise RuntimeError(
+            "No timestamps meet the requested minimum measurement coverage "
+            f"({min_coverage:.1%})."
+        )
+
+    peak_time = total_q[valid].idxmin()
+    peak_total_q = float(total_q.loc[peak_time])
+    contributions = calculate_contributions_at_time(
+        q_matrix, column_meta, peak_time
+    )
+    contributions, capacitive_total = add_contribution_shares(
+        contributions, peak_total_q
+    )
+
+    return {
+        "contributions": contributions,
+        "peak_time": peak_time,
+        "peak_total_q": peak_total_q,
+        "available_count": available_count,
+        "coverage": coverage,
+        "transformer_count": transformer_count,
+        "capacitive_total": capacitive_total,
+    }
+
+
+def find_capacitive_events(q_matrix, min_coverage, threshold_mvar):
+    """Find continuous periods whose net Q is at or below the capacitive limit."""
+    transformer_count = q_matrix.shape[1]
+    available_count = q_matrix.notna().sum(axis=1)
+    coverage = available_count / transformer_count
+    total_q = q_matrix.sum(axis=1, min_count=1)
+    eligible = (
+        total_q.notna()
+        & (coverage >= min_coverage)
+        & (total_q <= -threshold_mvar)
+    )
+    if not eligible.any():
+        return pd.DataFrame(columns=EVENT_SUMMARY_COLUMNS)
+
+    time_differences = q_matrix.index.to_series().diff()
+    positive_differences = time_differences[time_differences > pd.Timedelta(0)]
+    typical_interval = (
+        positive_differences.median()
+        if not positive_differences.empty
+        else pd.Timedelta(0)
+    )
+    excessive_gap = pd.Series(False, index=q_matrix.index)
+    if typical_interval > pd.Timedelta(0):
+        excessive_gap = time_differences > 1.5 * typical_interval
+
+    event_starts = eligible & (
+        ~eligible.shift(1, fill_value=False) | excessive_gap
+    )
+    event_numbers = event_starts.cumsum()
+    rows = []
+    for event_number, event_total_q in total_q[eligible].groupby(
+        event_numbers[eligible]
+    ):
+        peak_time = event_total_q.idxmin()
+        start = event_total_q.index[0]
+        end = event_total_q.index[-1]
+        rows.append(
+            {
+                "event": int(event_number),
+                "start": start,
+                "end": end,
+                "duration_hours": (end - start).total_seconds() / 3600.0,
+                "measurement_points": int(len(event_total_q)),
+                "peak_time": peak_time,
+                "peak_Q_MVAr": float(event_total_q.loc[peak_time]),
+                "peak_coverage_pct": float(coverage.loc[peak_time] * 100.0),
+            }
+        )
+
+    return (
+        pd.DataFrame(rows, columns=EVENT_SUMMARY_COLUMNS)
+        .sort_values("start")
+        .reset_index(drop=True)
+    )
+
+
+def plot_ordered_reactive_power(
+    contributions, peak_time, output_path, event_period=None
+):
+    """Plot RTP reactive-power sums ordered from lowest to highest Q."""
+    ordered = contributions.sort_values(
+        ["Q_MVAr", "RTP"], ascending=[True, True]
+    ).reset_index(drop=True)
+    if ordered.empty:
+        raise RuntimeError("No RTP contributions are available for plotting.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure_width = max(12.0, 0.42 * len(ordered))
+    fig, ax = plt.subplots(figsize=(figure_width, 7.0), constrained_layout=True)
+
+    colors = ["#2f6f9f" if value < 0 else "#d9822b" for value in ordered["Q_MVAr"]]
+    ax.bar(ordered["RTP"], ordered["Q_MVAr"], color=colors, width=0.8)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("RTP")
+    ax.set_ylabel("Vsota jalove moči Q [MVAr]")
+    title = (
+        "Urejena vsota jalove moči po RTP\n"
+        f"Sistemska konica: {pd.Timestamp(peak_time)}"
+    )
+    if event_period is not None:
+        title += f"\nDogodek: {event_period[0]} – {event_period[1]}"
+    ax.set_title(title)
+    ax.grid(axis="y", alpha=0.3)
+    ax.tick_params(axis="x", labelrotation=60)
+    plt.setp(ax.get_xticklabels(), ha="right")
+
+    fig.savefig(output_path, format=output_path.suffix.lstrip(".") or "svg", dpi=180)
+    plt.close(fig)
+
+
+def export_capacitive_events(
+    events, q_matrix, column_meta, output_dir, threshold_mvar
+):
+    """Write an event index and one ordered RTP plot per event."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = output_dir / "events_summary.csv"
+    events.to_csv(summary_path, index=False, sep=";", decimal=",")
+
+    for event in events.itertuples(index=False):
+        contributions = calculate_contributions_at_time(
+            q_matrix, column_meta, event.peak_time
+        )
+        timestamp_tag = pd.Timestamp(event.peak_time).strftime("%Y%m%d_%H%M%S")
+        plot_path = output_dir / (
+            f"event_{event.event:03d}_{timestamp_tag}_ordered_RTP_Q.svg"
+        )
+        plot_ordered_reactive_power(
+            contributions=contributions,
+            peak_time=event.peak_time,
+            output_path=plot_path,
+            event_period=(event.start, event.end),
+        )
+
+    print(f"\nCAPACITIVE EVENTS AT OR ABOVE {threshold_mvar:g} MVAr")
+    print("=" * 78)
+    print(f"Events found:             {len(events)}")
+    print(f"Event summary:            {summary_path}")
+    print(f"Event plots directory:    {output_dir}")
+
+
+def print_peak_report(peak, top_count):
+    contributions = peak["contributions"]
+    peak_time = peak["peak_time"]
+    peak_total_q = peak["peak_total_q"]
+    available_count = peak["available_count"]
+    coverage = peak["coverage"]
+    transformer_count = peak["transformer_count"]
+    capacitive_total = peak["capacitive_total"]
 
     top = contributions[contributions["Q_MVAr"] < 0].head(top_count).copy()
     top_capacitive_share = top["share_capacitive_pct"].sum()
@@ -315,11 +525,30 @@ def main():
     if q_matrix.empty:
         raise RuntimeError("No valid reactive-power measurements were read.")
 
-    print_peak_report(
+    peak = calculate_peak_contributions(
         q_matrix=q_matrix,
         column_meta=column_meta,
         min_coverage=args.min_coverage,
-        top_count=args.top,
+    )
+    print_peak_report(peak=peak, top_count=args.top)
+    plot_ordered_reactive_power(
+        contributions=peak["contributions"],
+        peak_time=peak["peak_time"],
+        output_path=args.plot_output,
+    )
+    print(f"\nOrdered RTP reactive-power plot: {args.plot_output}")
+
+    events = find_capacitive_events(
+        q_matrix=q_matrix,
+        min_coverage=args.min_coverage,
+        threshold_mvar=args.event_threshold_mvar,
+    )
+    export_capacitive_events(
+        events=events,
+        q_matrix=q_matrix,
+        column_meta=column_meta,
+        output_dir=args.events_output_dir,
+        threshold_mvar=args.event_threshold_mvar,
     )
 
 

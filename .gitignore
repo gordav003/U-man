@@ -18,6 +18,7 @@ outputs/
 results/
 urejeno/
 rtp_reactive_power_analysis/
+korelacija_dQ_dU_15min/
 *.parquet
 
 # Operating-system files
