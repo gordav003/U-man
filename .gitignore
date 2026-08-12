@@ -19,7 +19,15 @@ results/
 urejeno/
 rtp_reactive_power_analysis/
 korelacija_dQ_dU_15min/
+Jacobian_exports/
 *.parquet
+*.npz
+
+# Local PowerFactory and analysis exports
+*.pfd
+*.pfdz
+pandapower_network.json
+pf_point_power_mismatch.csv
 
 # Operating-system files
 .DS_Store

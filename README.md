@@ -1,5 +1,7 @@
 # U-MAN — TSO–DSO Coordination for Voltage and Reactive Power Management
 
+[![Python syntax](https://github.com/gordav003/U-man/actions/workflows/python-syntax.yml/badge.svg)](https://github.com/gordav003/U-man/actions/workflows/python-syntax.yml)
+
 ## Overview
 
 This repository supports research conducted in connection with the [CRESYM U-MAN project](https://cresym.eu/u-man/), which investigates coordination between transmission system operators (TSOs) and distribution system operators (DSOs) for voltage control and reactive power management.
@@ -113,6 +115,25 @@ python -m pip install -r requirements.txt
 Raw SCADA measurements and generated results should remain outside the repository
 because they may be large or confidential.
 
+The `powerfactory_to_pandapower_jacobian.py` workflow additionally requires a
+licensed DIgSILENT PowerFactory installation and must run with the Python
+environment supplied or supported by PowerFactory. The proprietary
+`powerfactory` module is therefore not listed in `requirements.txt`.
+
+## Repository tools
+
+| Area | Main scripts | Purpose |
+| --- | --- | --- |
+| Data preparation | `ureditev_meritev.py`, `ureditev_TAP_meritev.py` | Normalize SCADA P/Q/U measurements and transformer tap positions. |
+| Voltage analysis | `Voltage_*.py`, `voltage_data.py` | Analyze voltage levels, high-voltage events, annual duration curves, and shared voltage data. |
+| Reactive power | `Reactive_Power_*.py` | Analyze reactive-power behavior, peaks, annual duration, and compensation scenarios. |
+| Correlation | `Korelacija_*.py`, `continuous_segments.py` | Calculate segmented Q–U and cross-voltage-level correlations. |
+| Interactive plotting | `Parquet_Plotter.py` | Build and export plots from prepared Parquet components. |
+| Network model | `powerfactory_to_pandapower_jacobian.py` | Convert a PowerFactory model, solve or reconstruct the operating point, and export the sparse classical AC Jacobian. |
+
+Generated measurements, plots, Jacobian matrices, pandapower networks, and
+PowerFactory project files are intentionally excluded through `.gitignore`.
+
 ## Usage
 
 Prepare the P/Q/U measurements from a directory containing SCADA CSV files:
@@ -211,6 +232,9 @@ preskočeni.
   napetostnih vrst za napetostne analize.
 - `continuous_segments.py` je skupna implementacija segmentiranja za Q–U in
   400/110-kV korelacijsko analizo.
+- `powerfactory_to_pandapower_jacobian.py` pretvori PowerFactory model v
+  pandapower ter izvozi redko klasično AC Jacobijevo matriko in diagnostične
+  rezultate.
 - `ureditev_meritev.py` pripravlja meritve P/Q/U, `ureditev_TAP_meritev.py` pa
   diskretne položaje regulatorjev. Ločeni sta namenoma, ker imata različna
   pravila prepoznavanja, validacije in izvoza.
