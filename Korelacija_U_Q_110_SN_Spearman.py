@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """Spearmanova korelacija 15-minutnih sprememb U in Q zbiralk 110/SN.
 
-Zbiralka je lokacija RTP z vsaj enim strogim transformatorjem 110/SN. Strogi
+Zbiralka je lokacija RTP z vsaj enim strogim transformatorjem 110/SN in z
+veljavnimi meritvami U ter Q na 110-kV strani. Strogi
 transformator 110/SN ima za isti objekt meritev na 110 kV, vsaj eno meritev na
 nivoju pod 110 kV in nobene meritve na nivoju nad 110 kV. Tako so izloceni
 transformatorji 220/110 kV, 400/110 kV in njihove terciarne strani.
@@ -219,8 +220,23 @@ def load_110_sn_busbars(
         )
     )
 
+    # Izlocimo RTP, ki imajo v podatkih samo identifikacijo transformatorja,
+    # nimajo pa nobene uporabne 110-kV meritve U ali Q. Dodatni filter po
+    # segmentih spodaj nato zahteva se dovolj tocnih 15-minutnih sprememb.
+    eligible_locations = (
+        transformer_values.group_by("lokacija_od")
+        .agg(
+            pl.col("U_trafo_kV").is_not_null().sum().alias("n_veljavnih_U"),
+            pl.col("Q_trafo_MVAr").is_not_null().sum().alias("n_veljavnih_Q"),
+        )
+        .filter(pl.col("n_veljavnih_U") > 0)
+        .filter(pl.col("n_veljavnih_Q") > 0)
+        .select("lokacija_od")
+    )
+
     busbars = (
-        transformer_values.group_by(["time", "lokacija_od"])
+        transformer_values.join(eligible_locations, on="lokacija_od", how="inner")
+        .group_by(["time", "lokacija_od"])
         .agg(
             pl.col("U_trafo_kV").median().alias("U_110_kV"),
             pl.col("Q_trafo_MVAr").sum().alias("Q_110_SN_MVAr"),
@@ -250,7 +266,10 @@ def load_110_sn_busbars(
         .alias("nivoji_trafo_kV")
     )
     group_metadata = (
-        strict_keys_for_metadata.group_by("lokacija_od")
+        strict_keys_for_metadata.join(
+            eligible_locations, on="lokacija_od", how="inner"
+        )
+        .group_by("lokacija_od")
         .agg(
             pl.col("fizicni_trafo").n_unique().alias("n_trafov_110_SN"),
             pl.col("fizicni_trafo").sort().str.join(";").alias("transformatorji"),
@@ -340,6 +359,28 @@ def ordered_busbars(group_metadata: pl.DataFrame) -> list[str]:
     return group_metadata.sort("lokacija_od").get_column("zbiralka").to_list()
 
 
+def eligible_busbars_for_segment(
+    changes: pl.DataFrame,
+    group_metadata: pl.DataFrame,
+    min_pair_points: int,
+) -> tuple[list[str], pl.DataFrame]:
+    """Vrne zbiralke z dovolj veljavnimi dU in dQ v danem segmentu."""
+    availability = (
+        changes.group_by("zbiralka")
+        .agg(
+            pl.col("dU_kV").is_finite().sum().alias("n_veljavnih_dU"),
+            pl.col("dQ_MVAr").is_finite().sum().alias("n_veljavnih_dQ"),
+        )
+        .filter(pl.col("n_veljavnih_dU") >= min_pair_points)
+        .filter(pl.col("n_veljavnih_dQ") >= min_pair_points)
+        .select("zbiralka")
+    )
+    eligible_metadata = group_metadata.join(
+        availability, on="zbiralka", how="inner"
+    ).sort("lokacija_od")
+    return ordered_busbars(eligible_metadata), eligible_metadata
+
+
 def wide_values(
     changes: pl.DataFrame, busbars: list[str], value_column: str
 ) -> np.ndarray:
@@ -372,7 +413,10 @@ def spearman_cross_matrix(
         warnings.simplefilter("ignore", ConstantInputWarning)
         result = spearmanr(combined, axis=0, nan_policy="omit")
     full_correlation = np.asarray(result.statistic, dtype=float)
-    correlation = full_correlation[:n_busbars, n_busbars:]
+    if n_busbars == 1:
+        correlation = full_correlation.reshape(1, 1)
+    else:
+        correlation = full_correlation[:n_busbars, n_busbars:]
     correlation[pair_counts < min_pair_points] = np.nan
     return correlation, pair_counts
 
@@ -563,7 +607,9 @@ def main() -> None:
     busbar_values, group_metadata = load_110_sn_busbars(input_path)
     busbars = ordered_busbars(group_metadata)
     if not busbars:
-        raise ValueError("V vhodnih podatkih ni strogih transformatorjev 110/SN.")
+        raise ValueError(
+            "V vhodnih podatkih ni zbiralk 110/SN z veljavnimi meritvami U in Q."
+        )
 
     segments = find_continuous_segments(
         busbar_values,
@@ -598,24 +644,41 @@ def main() -> None:
         segment_dir.mkdir(parents=True, exist_ok=True)
         segment_busbars = rows_in_segment(busbar_values, segment)
         changes = exact_15_minute_changes(segment_busbars)
-        du_values = wide_values(changes, busbars, "dU_kV")
-        dq_values = wide_values(changes, busbars, "dQ_MVAr")
+        segment_busbar_names, segment_group_metadata = eligible_busbars_for_segment(
+            changes, group_metadata, args.min_pair_points
+        )
+        if not segment_busbar_names:
+            (segment_dir / "izracun_povzetek.txt").write_text(
+                "V segmentu ni zbiralk z dovolj veljavnimi meritvami U in Q.\n",
+                encoding="utf-8",
+            )
+            print(
+                f"Segment {segment.number}/{len(segments)} preskocen: "
+                "ni zbiralk z dovolj veljavnimi U in Q."
+            )
+            continue
+        segment_busbars = segment_busbars.filter(
+            pl.col("zbiralka").is_in(segment_busbar_names)
+        )
+        changes = changes.filter(pl.col("zbiralka").is_in(segment_busbar_names))
+        du_values = wide_values(changes, segment_busbar_names, "dU_kV")
+        dq_values = wide_values(changes, segment_busbar_names, "dQ_MVAr")
         correlation, pair_counts = spearman_cross_matrix(
             du_values, dq_values, args.min_pair_points
         )
         metadata = build_segment_metadata(
-            segment_busbars, changes, group_metadata
+            segment_busbars, changes, segment_group_metadata
         )
         same_location = same_busbar_results(metadata, correlation, pair_counts)
 
         write_matrix_csv(
             segment_dir / "spearman_dU_dQ_korelacijska_matrika.csv",
-            busbars,
+            segment_busbar_names,
             correlation,
         )
         write_matrix_csv(
             segment_dir / "stevilo_skupnih_15min_parov_dU_dQ.csv",
-            busbars,
+            segment_busbar_names,
             pair_counts,
             integer=True,
         )
@@ -629,7 +692,7 @@ def main() -> None:
         )
         draw_heatmap(
             correlation,
-            busbars,
+            segment_busbar_names,
             segment_dir / "spearman_heatmap_dU_dQ_15min.png",
             segment_dir / "spearman_heatmap_dU_dQ_15min.svg",
             args.annotate_max_busbars,
@@ -643,7 +706,7 @@ def main() -> None:
             "SPEARMANOVA KORELACIJA dU-dQ 110/SN - ZVEZNI SEGMENT",
             f"Segment: {segment.label}",
             f"Casovnih tock segmenta: {segment.n_timestamps}",
-            f"Stevilo zbiralk/lokacij: {len(busbars)}",
+            f"Stevilo zbiralk/lokacij z veljavnimi U in Q: {len(segment_busbar_names)}",
             f"Minimalno skupnih parov: {args.min_pair_points}",
             f"Veljavnih koeficientov v celotni matriki: {finite.size}",
             f"Veljavnih korelacij iste lokacije: {finite_same.size}",

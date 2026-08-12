@@ -622,7 +622,7 @@ def regression_statistics(
 
     # Spearman brez odvisnosti od scipy: Pearsonova korelacija rangov.
     spearman_r = float(
-        x.rank(method="average").corr(y.rank(method="average"), method="pearson")
+        x.rank(method="average").corr(y.rank(method="average"), method="spearman")
     )
 
     beta_1, beta_0 = np.polyfit(x.to_numpy(), y.to_numpy(), deg=1)

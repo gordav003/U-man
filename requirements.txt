@@ -4,3 +4,4 @@ pandas
 polars
 pyarrow
 scipy
+scikit-learn
