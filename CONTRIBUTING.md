@@ -1,70 +1,70 @@
-# Prispevanje in organizacija repozitorija
+# Contributing and Repository Organization
 
-Ta dokument določa preprost način dela, da `main` ostane stabilen in da je iz
-zgodovine jasno, zakaj je bila posamezna sprememba narejena.
+This document defines a simple workflow to keep `main` stable and to make it
+clear from the history why each change was made.
 
-## Veje
+## Branches
 
-`main` je edina trajna veja in mora vedno vsebovati delujočo, pregledano kodo.
-Za vsako zaključeno nalogo ustvari kratkotrajno vejo iz najnovejšega `main`:
+`main` is the only permanent branch and must always contain working, reviewed code.
+For each completed task, create a short-lived branch from the latest `main`:
 
-- `feature/<kratek-opis>` za novo funkcionalnost ali analizo;
-- `fix/<kratek-opis>` za popravek napake;
-- `docs/<kratek-opis>` za dokumentacijo;
-- `refactor/<kratek-opis>` za preureditev brez spremembe obnašanja;
-- `chore/<kratek-opis>` za odvisnosti in vzdrževalna opravila;
-- `agent/<kratek-opis>` za spremembe, ki jih pripravi Codex.
+- `feature/<short-description>` for new functionality or analysis;
+- `fix/<short-description>` for bug fixes;
+- `docs/<short-description>` for documentation;
+- `refactor/<short-description>` for restructuring without changing behavior;
+- `chore/<short-description>` for dependencies and maintenance tasks;
+- `agent/<short-description>` for changes prepared by Codex.
 
-Uporabljaj male črke, angleške izraze in vezaje, na primer
-`feature/annual-voltage-duration`. Po združitvi PR-ja vejo izbriši lokalno in
-na GitHubu.
+Use lowercase letters, English terms, and hyphens, for example
+`feature/annual-voltage-duration`. After merging the PR, delete the branch locally and
+on GitHub.
 
-## Običajen potek dela
+## Standard Workflow
 
-1. Posodobi `main` in iz njega ustvari namensko vejo.
-2. V en commit združi eno smiselno spremembo; večje naloge lahko imajo več
-   ločenih commitov.
-3. Pred objavo zaženi ustrezna preverjanja.
-4. Odpri pull request proti `main` in v opisu navedi namen, vpliv ter izvedena
-   preverjanja.
-5. Po pregledu združi PR in izbriši zaključeno vejo.
+1. Update `main` and create a dedicated branch from it.
+2. Keep one logical change in a single commit; larger tasks may contain multiple
+   separate commits.
+3. Run the relevant checks before publishing.
+4. Open a pull request against `main` and describe the purpose, impact, and checks
+   performed.
+5. After review, merge the PR and delete the completed branch.
 
-Ne commitaj merilnih podatkov, poverilnic, lokalnih rezultatov ali virtualnih
-okolij. Ti artefakti morajo ostati pokriti z `.gitignore`.
+Do not commit measurement data, credentials, local results, or virtual
+environments. These artifacts must remain covered by `.gitignore`.
 
-## Commiti in pull requesti
+## Commits and Pull Requests
 
-Naslov naj bo kratek in v velelnem naklonu, na primer:
+Keep the title short and use the imperative mood, for example:
 
 - `Add annual voltage duration analysis`
 - `Fix missing segment boundaries`
 - `Document Parquet smoke test`
 
-PR naj odgovori na štiri vprašanja: kaj se spreminja, zakaj, kakšen je vpliv
-na uporabnika in kako je bila sprememba preverjena.
+A PR should answer four questions: what is changing, why, what is the impact
+on the user, and how was the change verified.
 
-## Osnovna preverjanja
+## Basic Checks
 
-Za spremembe Python kode najmanj preveri sintakso:
+For Python code changes, at minimum check the syntax:
 
 ```powershell
 python -m compileall -q .
 ```
 
-Za spremembe prikazovalnika Parquet zaženi tudi:
+For changes to the Parquet plotter, also run:
 
 ```powershell
 python parquet_plotter.py --smoke-test
 ```
 
-Analize, ki potrebujejo merilne datoteke, preveri na omejenem časovnem izseku.
-V PR zapiši uporabljeni ukaz in rezultat, vendar ne objavljaj zaupnih podatkov.
+For analyses that require measurement files, test them on a limited time range.
+In the PR, include the command used and the result, but do not publish confidential data.
 
-## Pregled strukture
+## Structure Overview
 
-- `README.md` opisuje namen projekta, namestitev in uporabo analiz.
-- `requirements.txt` je enoten seznam Python odvisnosti.
-- `voltage/voltage_data.py` vsebuje skupno odkrivanje in branje napetostnih podatkov.
-- `continuous_segments.py` vsebuje skupna pravila za zvezne časovne segmente.
-- Analitične skripte so razdeljene v pakete `correlations`, `measurements`,
-  `reactive_power` in `voltage`; novo skupno logiko izloči v ponovno uporaben modul.
+- `README.md` describes the purpose of the project, installation, and use of the analyses.
+- `requirements.txt` is the unified list of Python dependencies.
+- `voltage/voltage_data.py` contains shared voltage-data discovery and reading logic.
+- `continuous_segments.py` contains shared rules for continuous time segments.
+- Analytical scripts are organized into the `correlations`, `measurements`,
+  `reactive_power`, and `voltage` packages; move new shared logic into a reusable module.
