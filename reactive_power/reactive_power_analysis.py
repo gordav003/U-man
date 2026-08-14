@@ -634,7 +634,7 @@ def plot_duration_curve_together(rtp: str, df: pd.DataFrame, out_svg: Path):
     ax.set_xlim(0, 100)
     ax.set_xlabel("Percentage of measurement period / %")
     ax.set_ylabel("ΔQ / MVAr")
-    ax.set_title(f"Excess reactive-power consumption/generation - RTP {rtp}")
+    ax.set_title(f"Excess reactive-power consumption/generation - substation {rtp}")
     ax.legend(loc="upper left")
 
     save_figure(fig, out_svg)
@@ -652,7 +652,7 @@ def plot_q_status_share(rtp: str, pct_cap: float, pct_ok: float, pct_ind: float,
 
     ax.set_ylim(0, max(100, max(values) * 1.15 if values else 100))
     ax.set_ylabel("Share of time / %")
-    ax.set_title(f"Reactive-power state shares - RTP {rtp}")
+    ax.set_title(f"Reactive-power state shares - substation {rtp}")
     ax.grid(True, axis="y", alpha=0.35)
 
     for bar, val in zip(bars, values):
@@ -687,10 +687,10 @@ def plot_transformer_segment_pq(
         df_seg["time"],
         df_seg["P_MW"],
         linewidth=TIME_SERIES_LINEWIDTH,
-        label="P [MW]",
+        label="P / MW",
         color="#1f77b4",
     )
-    ax_p.set_ylabel("P [MW]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_p.set_ylabel("P / MW", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     ax_p.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
     ax_p.grid(True, alpha=0.35)
     ax_p.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
@@ -699,10 +699,10 @@ def plot_transformer_segment_pq(
         df_seg["time"],
         df_seg["Q_MVAr"],
         linewidth=TIME_SERIES_LINEWIDTH,
-        label="Q [MVAr]",
+        label="Q / MVAr",
         color="#ff7f0e",
     )
-    ax_q.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_q.set_ylabel("Q / MVAr", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     ax_q.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
     ax_q.grid(True, alpha=0.35)
     ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
@@ -731,7 +731,7 @@ def plot_transformer_segment_qu(
             df_seg["time"],
             df_seg["U_pu"],
             linewidth=TIME_SERIES_LINEWIDTH,
-            label="U [p.u.]",
+            label="U / p.u.",
             color="#2ca02c",
         )
         configure_voltage_axis(ax_u, df_seg["U_pu"])
@@ -747,7 +747,7 @@ def plot_transformer_segment_qu(
             fontsize=TIME_SERIES_TICK_FONTSIZE,
         )
 
-    ax_u.set_ylabel("U [p.u.]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_u.set_ylabel("U / p.u.", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     ax_u.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
     ax_u.grid(True, alpha=0.35)
 
@@ -755,10 +755,10 @@ def plot_transformer_segment_qu(
         df_seg["time"],
         df_seg["Q_MVAr"],
         linewidth=TIME_SERIES_LINEWIDTH,
-        label="Q [MVAr]",
+        label="Q / MVAr",
         color="#ff7f0e",
     )
-    ax_q.set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    ax_q.set_ylabel("Q / MVAr", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     ax_q.tick_params(axis="y", labelsize=TIME_SERIES_TICK_FONTSIZE)
     ax_q.grid(True, alpha=0.35)
     ax_q.legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
@@ -858,13 +858,13 @@ def plot_transformer_pair_segment(
 
     axes[0].plot(df_seg["time"], df_seg["P_HV_MW"], linewidth=TIME_SERIES_LINEWIDTH, label=f"P HV {hv_kv:g} kV")
     axes[0].plot(df_seg["time"], df_seg["P_MV_compare_MW"], linewidth=TIME_SERIES_LINEWIDTH, label=f"P MV {mv_kv:g} kV × {MV_POWER_SIGN_FOR_COMPARISON:g}")
-    axes[0].set_ylabel("P [MW]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    axes[0].set_ylabel("P / MW", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     axes[0].grid(True, alpha=0.35)
     axes[0].legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
     axes[1].plot(df_seg["time"], df_seg["Q_HV_MVAr"], linewidth=TIME_SERIES_LINEWIDTH, label=f"Q HV {hv_kv:g} kV")
     axes[1].plot(df_seg["time"], df_seg["Q_MV_compare_MVAr"], linewidth=TIME_SERIES_LINEWIDTH, label=f"Q MV {mv_kv:g} kV × {MV_POWER_SIGN_FOR_COMPARISON:g}")
-    axes[1].set_ylabel("Q [MVAr]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    axes[1].set_ylabel("Q / MVAr", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     axes[1].grid(True, alpha=0.35)
     axes[1].legend(loc="upper left", fontsize=TIME_SERIES_LEGEND_FONTSIZE)
 
@@ -876,7 +876,7 @@ def plot_transformer_pair_segment(
     else:
         axes[2].text(0.5, 0.5, "U is not available", transform=axes[2].transAxes, ha="center", va="center")
 
-    axes[2].set_ylabel("U [p.u.]", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
+    axes[2].set_ylabel("U / p.u.", fontsize=TIME_SERIES_AXIS_LABEL_FONTSIZE)
     axes[2].grid(True, alpha=0.35)
 
     for ax in axes:

@@ -10,11 +10,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from voltage_data import (
-    TransformerFile,
-    default_component_dir,
-    discover_transformers,
-)
+try:
+    from .voltage_data import (
+        TransformerFile,
+        default_component_dir,
+        discover_transformers,
+    )
+except ImportError:  # Support direct execution from this directory.
+    from voltage_data import (
+        TransformerFile,
+        default_component_dir,
+        discover_transformers,
+    )
 
 
 VOLTAGE_LEVELS_KV = (400, 220, 110)
@@ -250,9 +257,9 @@ def plot_level(
 
     unit_label = "kV" if unit == "kv" else "p.u."
     ax.set_xlabel(
-        "Share of valid measurements above the displayed voltage/%"
+        "Share of valid measurements above the displayed voltage / %"
     )
-    ax.set_ylabel(f"Voltage/{unit_label}")
+    ax.set_ylabel(f"U / {unit_label}")
     ax.set_xlim(0.0, 100.0)
     ax.grid(axis="y", color=COLORS["grid"], linewidth=0.8, alpha=0.8)
     ax.grid(axis="x", color=COLORS["grid"], linewidth=0.5, alpha=0.35)

@@ -16,21 +16,38 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import polars as pl
 
-from voltage_data import (
-    DEFAULT_END,
-    DEFAULT_MAX_GAP,
-    DEFAULT_START,
-    SeriesSelection,
-    TransformerFile,
-    build_line_graph,
-    canonical_station,
-    default_component_dir,
-    discover_transformers,
-    parse_period,
-    read_voltage_series,
-    split_continuous_periods,
-    valid_point_count,
-)
+try:
+    from .voltage_data import (
+        DEFAULT_END,
+        DEFAULT_MAX_GAP,
+        DEFAULT_START,
+        SeriesSelection,
+        TransformerFile,
+        build_line_graph,
+        canonical_station,
+        default_component_dir,
+        discover_transformers,
+        parse_period,
+        read_voltage_series,
+        split_continuous_periods,
+        valid_point_count,
+    )
+except ImportError:  # Support direct execution from this directory.
+    from voltage_data import (
+        DEFAULT_END,
+        DEFAULT_MAX_GAP,
+        DEFAULT_START,
+        SeriesSelection,
+        TransformerFile,
+        build_line_graph,
+        canonical_station,
+        default_component_dir,
+        discover_transformers,
+        parse_period,
+        read_voltage_series,
+        split_continuous_periods,
+        valid_point_count,
+    )
 
 
 ROOT_LEVELS_KV = (400, 220, 110)
@@ -410,13 +427,13 @@ def make_period_plot(
             sn_text = "/".join(map(str, connected_sn_levels_kv))
             y_label = (
                 f"{item.station}\n"
-                f"110/{sn_text} kV [kV]"
+                f"110/{sn_text} kV\nU / kV"
             )
         else:
             color = COLORS[item.voltage_kv]
             y_label = (
                 f"{root.station}\n"
-                f"{item.voltage_kv} kV [kV]"
+                f"{item.voltage_kv} kV\nU / kV"
             )
 
         axis.plot(

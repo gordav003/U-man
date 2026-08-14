@@ -79,7 +79,7 @@ def parse_transformer_file(path: Path) -> TransformerFile | None:
 
 
 def discover_rtp_files(data_dir: Path) -> tuple[dict[str, list[Path]], dict[str, int]]:
-    """Poišče iste stroge pare 110/SN kot Reactive_Power_Analysis.py."""
+    """Poišče iste stroge pare 110/SN kot reactive_power_analysis.py."""
     if not data_dir.is_dir():
         raise NotADirectoryError(f"Mapa ne obstaja: {data_dir}")
 
@@ -239,7 +239,7 @@ def calculate_compensation(
     capacitive_mask = q < frame["Q_limit_cap_MVAr"]
     inductive_mask = q > frame["Q_limit_ind_MVAr"]
 
-    # Vrstni red je namenoma enak kot v Reactive_Power_Analysis.py.
+    # Vrstni red je namenoma enak kot v reactive_power_analysis.py.
     d_q.loc[capacitive_mask] = (
         q.loc[capacitive_mask] - frame.loc[capacitive_mask, "Q_limit_cap_MVAr"]
     )
@@ -328,7 +328,7 @@ def build_figure(
     axis.set_xlim(0, 100)
     axis.set_xlabel("Percentage of measurement period / %")
     axis.set_ylabel("ΔQ / MVAr")
-    title = f"Excess reactive-power consumption/generation - RTP {rtp}"
+    title = f"Excess reactive-power consumption/generation - substation {rtp}"
     if capacitive_mvar != 0 or inductive_mvar != 0:
         title += " (compensated)"
     axis.set_title(title)

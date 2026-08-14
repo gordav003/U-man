@@ -16,20 +16,20 @@ Skripta:
 
 POMEMBNO:
   - Skripta uporablja modul voltage_data.py, ki ga uporablja tudi obstoječa
-    skripta Voltage_400kV_RTP.py.
+    skripta voltage_400kv_substation.py.
   - Topološki graf je zgrajen iz 110-kV vodov. Če je povezava izvedena prek
     400/220 in 220/110 kV, je priporočljivo ciljni 110/SN RTP določiti ročno
     z --connected-station.
 
 Primer ročnega izbora:
-  python Voltage_korelacija_400_110.py \
+  python -m voltage.voltage_correlation_400_110 \
       --root-station BERICEVO \
       --connected-station DOMZALE \
       --start 2025-04-01 \
       --end 2025-04-20
 
 Primer avtomatskega izbora najbližjega 110/SN RTP-ja:
-  python Voltage_korelacija_400_110.py \
+  python -m voltage.voltage_correlation_400_110 \
       --root-station BERICEVO \
       --max-hops 3
 """
@@ -53,23 +53,43 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from continuous_segments import label_continuous_segments
+try:
+    from continuous_segments import label_continuous_segments
+except ModuleNotFoundError:  # Support direct execution from this directory.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from continuous_segments import label_continuous_segments
 import polars as pl
 
-from voltage_data import (
-    DEFAULT_END,
-    DEFAULT_MAX_GAP,
-    DEFAULT_START,
-    SeriesSelection,
-    TransformerFile,
-    build_line_graph,
-    canonical_station,
-    default_component_dir,
-    discover_transformers,
-    parse_period,
-    read_voltage_series,
-    valid_point_count,
-)
+try:
+    from .voltage_data import (
+        DEFAULT_END,
+        DEFAULT_MAX_GAP,
+        DEFAULT_START,
+        SeriesSelection,
+        TransformerFile,
+        build_line_graph,
+        canonical_station,
+        default_component_dir,
+        discover_transformers,
+        parse_period,
+        read_voltage_series,
+        valid_point_count,
+    )
+except ImportError:  # Support direct execution from this directory.
+    from voltage_data import (
+        DEFAULT_END,
+        DEFAULT_MAX_GAP,
+        DEFAULT_START,
+        SeriesSelection,
+        TransformerFile,
+        build_line_graph,
+        canonical_station,
+        default_component_dir,
+        discover_transformers,
+        parse_period,
+        read_voltage_series,
+        valid_point_count,
+    )
 
 
 # ============================================================================
@@ -834,8 +854,8 @@ def plot_time_series(
         label=f"{connected_label} – 110 kV",
     )
 
-    axis.set_xlabel("Čas", fontsize=11)
-    axis.set_ylabel("Napetost / p.u.", fontsize=11)
+    axis.set_xlabel("Time", fontsize=11)
+    axis.set_ylabel("U / p.u.", fontsize=11)
     apply_axis_style(axis)
 
     locator = mdates.AutoDateLocator(minticks=5, maxticks=12)
@@ -879,7 +899,7 @@ def plot_scatter_regression(
         y_line,
         linewidth=1.8,
         color=COLORS["fit"],
-        label="Linearna regresija",
+        label="Linear regression",
     )
 
     if zero_lines:
@@ -948,16 +968,16 @@ def plot_lag_correlation(
         color=COLORS["negative"],
         zorder=5,
         label=(
-            f"Največji |r|: {best['pearson_r']:.3f} pri "
+            f"Maximum |r|: {best['pearson_r']:.3f} at "
             f"{best['lag_minutes']:.0f} min"
         ),
     )
 
     axis.set_xlabel(
-        "Časovni zamik 110-kV spremembe glede na 400-kV spremembo / min",
+        "Lag of the 110 kV change relative to the 400 kV change / min",
         fontsize=11,
     )
-    axis.set_ylabel("Pearsonov korelacijski koeficient r", fontsize=11)
+    axis.set_ylabel("Pearson correlation coefficient r", fontsize=11)
     apply_axis_style(axis)
     axis.legend(loc="best", frameon=False, fontsize=9)
 

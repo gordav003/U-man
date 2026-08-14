@@ -26,10 +26,10 @@ Meritve iz ločenih segmentov se nikoli ne združijo v isti koeficient.
 Najlažji način uporabe:
   - spodaj spremeni INPUT_FILE,
   - nato zaženi:
-        python Korelacija_dQ_dU_15min.py
+        python -m correlations.reactive_power_voltage_delta_15min
 
 Lahko pa datoteko podaš tudi v PowerShellu:
-    python .\Korelacija_dQ_dU_15min.py `
+    python -m correlations.reactive_power_voltage_delta_15min `
       --input-file "C:\pot\do\TR_KRSKO_400_TR411.parquet"
 
 POMEMBNO:
@@ -53,7 +53,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from continuous_segments import label_continuous_segments
+try:
+    from continuous_segments import label_continuous_segments
+except ModuleNotFoundError:  # Support direct execution from this directory.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from continuous_segments import label_continuous_segments
 
 
 # =============================================================================
@@ -679,7 +683,7 @@ def plot_time_series(
 
     axes[1].plot(df["time"], df["U_pu"], linewidth=1.15)
     axes[1].set_ylabel("U / p.u.", fontsize=11)
-    axes[1].set_xlabel("Čas", fontsize=11)
+    axes[1].set_xlabel("Time", fontsize=11)
     apply_axis_style(axes[1])
 
     locator = mdates.AutoDateLocator(minticks=5, maxticks=10)
@@ -708,7 +712,7 @@ def plot_scatter_regression(
 
     x_line = np.linspace(np.nanmin(x), np.nanmax(x), 250)
     y_line = result.beta_0_kv + result.beta_1_kv_per_mvar * x_line
-    axis.plot(x_line, y_line, linewidth=1.8, label="Linearna regresija")
+    axis.plot(x_line, y_line, linewidth=1.8, label="Linear regression")
 
     axis.axhline(0.0, linewidth=0.9, alpha=0.55)
     axis.axvline(0.0, linewidth=0.9, alpha=0.55)

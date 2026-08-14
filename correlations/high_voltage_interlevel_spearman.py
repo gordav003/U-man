@@ -3,7 +3,7 @@ from __future__ import annotations
 """Loceni heatmapi Spearmanove korelacije 110-220 in 110-400 kV.
 
 Skripta uporablja enako pripravo podatkov kot
-Korelacija_VN_zbiralk_Spearman.py:
+high_voltage_busbar_spearman.py:
 
 * vsak fizicni transformator je upostevan samo na najvisjem VN-nivoju;
 * napetost zbiralke je mediana veljavnih napetosti vseh izbranih trafov;
@@ -13,7 +13,7 @@ Korelacija_VN_zbiralk_Spearman.py:
 
 Privzeti zagon iz korena projekta:
 
-    python U-man/Korelacija_VN_med_nivoji_Spearman.py
+    python -m correlations.high_voltage_interlevel_spearman
 """
 
 import argparse
@@ -27,22 +27,40 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 
-from Korelacija_VN_zbiralk_Spearman import (
-    DEFAULT_MAX_GAP_MINUTES,
-    DEFAULT_MIN_PAIR_POINTS,
-    DEFAULT_MIN_SEGMENT_POINTS,
-    default_input_path,
-    exact_15_minute_changes,
-    find_continuous_segments,
-    load_busbar_voltages,
-    ordered_busbars,
-    project_root,
-    rows_in_segment,
-    spearman_matrix,
-    validate_schema,
-    wide_change_matrix,
-    write_segments_index,
-)
+try:
+    from .high_voltage_busbar_spearman import (
+        DEFAULT_MAX_GAP_MINUTES,
+        DEFAULT_MIN_PAIR_POINTS,
+        DEFAULT_MIN_SEGMENT_POINTS,
+        default_input_path,
+        exact_15_minute_changes,
+        find_continuous_segments,
+        load_busbar_voltages,
+        ordered_busbars,
+        project_root,
+        rows_in_segment,
+        spearman_matrix,
+        validate_schema,
+        wide_change_matrix,
+        write_segments_index,
+    )
+except ImportError:  # Support direct execution from this directory.
+    from high_voltage_busbar_spearman import (
+        DEFAULT_MAX_GAP_MINUTES,
+        DEFAULT_MIN_PAIR_POINTS,
+        DEFAULT_MIN_SEGMENT_POINTS,
+        default_input_path,
+        exact_15_minute_changes,
+        find_continuous_segments,
+        load_busbar_voltages,
+        ordered_busbars,
+        project_root,
+        rows_in_segment,
+        spearman_matrix,
+        validate_schema,
+        wide_change_matrix,
+        write_segments_index,
+    )
 
 
 def default_output_dir() -> Path:
@@ -173,7 +191,7 @@ def draw_readable_heatmap(
     )
 
     ax.set_title(
-        f"Spearmanova korelacija dU: {row_level_kv} kV proti "
+        f"Spearman correlation of ΔU: {row_level_kv} kV versus "
         f"{column_level_kv} kV",
         fontsize=15,
         color="#20252B",
@@ -184,8 +202,8 @@ def draw_readable_heatmap(
     ax.text(
         0,
         1.012,
-        "dU(t) = U(t + 15 min) - U(t) | stevilke v celicah so "
-        f"Spearmanovi koeficienti | segment: {period_label}",
+        "ΔU(t) = U(t + 15 min) - U(t) | cell values are "
+        f"Spearman coefficients | segment: {period_label}",
         transform=ax.transAxes,
         fontsize=9.5,
         color="#5B6470",
@@ -215,8 +233,8 @@ def draw_readable_heatmap(
     ax.tick_params(axis="x", top=True, bottom=False, labeltop=True, labelbottom=False)
     ax.tick_params(axis="y", length=0, pad=4)
     ax.tick_params(axis="x", length=0, pad=7)
-    ax.set_ylabel(f"Zbiralke {row_level_kv} kV", fontsize=10, labelpad=10)
-    ax.set_xlabel(f"Zbiralke {column_level_kv} kV", fontsize=10, labelpad=10)
+    ax.set_ylabel("ΔU / kV", fontsize=10, labelpad=10)
+    ax.set_xlabel("ΔU / kV", fontsize=10, labelpad=10)
     ax.xaxis.set_label_position("top")
 
     ax.set_xticks(np.arange(-0.5, n_columns, 1), minor=True)
@@ -248,7 +266,7 @@ def draw_readable_heatmap(
             )
 
     colorbar = fig.colorbar(image, ax=ax, fraction=0.035, pad=0.035)
-    colorbar.set_label("Spearmanov koeficient", fontsize=9)
+    colorbar.set_label("Spearman coefficient", fontsize=9)
     colorbar.set_ticks([-1, -0.5, 0, 0.5, 1])
     colorbar.ax.tick_params(labelsize=8)
     colorbar.outline.set_edgecolor("#A7AFB8")

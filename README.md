@@ -124,11 +124,11 @@ environment supplied or supported by PowerFactory. The proprietary
 
 | Area | Main scripts | Purpose |
 | --- | --- | --- |
-| Data preparation | `ureditev_meritev.py`, `ureditev_TAP_meritev.py` | Normalize SCADA P/Q/U measurements and transformer tap positions. |
-| Voltage analysis | `Voltage_*.py`, `voltage_data.py` | Analyze voltage levels, high-voltage events, annual duration curves, and shared voltage data. |
-| Reactive power | `Reactive_Power_*.py` | Analyze reactive-power behavior, peaks, annual duration, and compensation scenarios. |
-| Correlation | `Korelacija_*.py`, `continuous_segments.py` | Calculate segmented Q–U and cross-voltage-level correlations. |
-| Interactive plotting | `Parquet_Plotter.py` | Build and export plots from prepared Parquet components. |
+| Data preparation | `measurements/prepare_*.py` | Normalize SCADA P/Q/U measurements and transformer tap positions. |
+| Voltage analysis | `voltage/*.py` | Analyze voltage levels, high-voltage events, annual duration curves, and shared voltage data. |
+| Reactive power | `reactive_power/*.py` | Analyze reactive-power behavior, peaks, annual duration, and compensation scenarios. |
+| Correlation | `correlations/*.py`, `continuous_segments.py` | Calculate segmented P/Q/U and cross-voltage-level correlations. |
+| Interactive plotting | `parquet_plotter.py` | Build and export plots from prepared Parquet components. |
 | Network model | `powerfactory_to_pandapower_jacobian.py` | Convert a PowerFactory model, solve or reconstruct the operating point, and export the sparse classical AC Jacobian. |
 
 Generated measurements, plots, Jacobian matrices, pandapower networks, and
@@ -139,26 +139,26 @@ PowerFactory project files are intentionally excluded through `.gitignore`.
 Prepare the P/Q/U measurements from a directory containing SCADA CSV files:
 
 ```powershell
-python ureditev_meritev.py "C:\path\to\scada-data" --mode normalize
-python ureditev_meritev.py "C:\path\to\scada-data" --mode component_files
+python -m measurements.prepare_measurements "C:\path\to\scada-data" --mode normalize
+python -m measurements.prepare_measurements "C:\path\to\scada-data" --mode component_files
 ```
 
 Prepare transformer tap measurements:
 
 ```powershell
-python ureditev_TAP_meritev.py "C:\path\to\scada-data" --mode all
+python -m measurements.prepare_tap_measurements "C:\path\to\scada-data" --mode all
 ```
 
 Analyze the generated transformer component files:
 
 ```powershell
-python Reactive_Power_Analysis.py `
+python -m reactive_power.reactive_power_analysis `
   "C:\path\to\scada-data\urejeno\Uman_parquet\component_files"
 ```
 
 All scripts accept `--help`. The preprocessing scripts write to a directory under
 the input directory by default; use `--output-dir` to select another location.
-`Reactive_Power_Analysis.py` saves charts only as editable vector SVG files.
+`reactive_power_analysis.py` saves charts only as editable vector SVG files.
 Analytical results remain available in the console; CSV files are not generated.
 
 ## Interaktivna kompenzacija jalove moči RTP
@@ -167,7 +167,7 @@ Za primerjavo izvornega stanja z dodano kapacitivno ali induktivno jalovo močjo
 zaženi:
 
 ```powershell
-python Reactive_Power_Compensation_GUI.py
+python -m reactive_power.reactive_power_compensation_gui
 ```
 
 V oknu izberi mapo `component_files` in RTP, vnesi kapacitivno oziroma
@@ -178,7 +178,7 @@ kot SVG, PNG ali PDF, rezultate posameznih merilnih točk pa izvoziti v CSV.
 Če so podatki v drugi mapi, jo izberi v oknu ali podaj ob zagonu:
 
 ```powershell
-python Reactive_Power_Compensation_GUI.py `
+python -m reactive_power.reactive_power_compensation_gui `
   --data-dir "C:\pot\do\Uman_parquet\component_files"
 ```
 
@@ -187,7 +187,7 @@ python Reactive_Power_Compensation_GUI.py `
 Za poljubno sestavljanje grafov iz pripravljenih komponent zaženi:
 
 ```powershell
-python Parquet_Plotter.py
+python parquet_plotter.py
 ```
 
 V oknu poišči komponento (transformator, daljnovod, generator, merilno mesto ali
@@ -198,13 +198,13 @@ shraniš kot PNG, SVG ali PDF ter shraniš izbor v JSON za ponovno uporabo.
 Če so Parquet datoteke drugje, mapo dodaj v aplikaciji ali jo podaj ob zagonu:
 
 ```powershell
-python Parquet_Plotter.py --data-dir "C:\pot\do\parquetov"
+python parquet_plotter.py --data-dir "C:\pot\do\parquetov"
 ```
 
 Preizkus branja brez odprtja grafičnega okna:
 
 ```powershell
-python Parquet_Plotter.py --smoke-test
+python parquet_plotter.py --smoke-test
 ```
 
 ## Korelacija Q–U po zveznih segmentih
@@ -214,7 +214,7 @@ Korelacija sprememb jalove moči in napetosti se računa ločeno za vsak zvezni
 in po vrzeli se zato ne združijo v isti korelacijski koeficient ali regresijo.
 
 ```powershell
-python Korelacija_dQ_dU_15min.py `
+python -m correlations.reactive_power_voltage_delta_15min `
   --input-file "C:\pot\do\TR_JESENICE_110_TR1.parquet" `
   --start 2025-10-18 `
   --end 2025-10-18 `
@@ -228,14 +228,15 @@ preskočeni.
 
 ## Organizacija kode
 
-- `voltage_data.py` vsebuje skupno odkrivanje elementov, topologijo in branje
+- `voltage/voltage_data.py` vsebuje skupno odkrivanje elementov, topologijo in branje
   napetostnih vrst za napetostne analize.
 - `continuous_segments.py` je skupna implementacija segmentiranja za Q–U in
   400/110-kV korelacijsko analizo.
 - `powerfactory_to_pandapower_jacobian.py` pretvori PowerFactory model v
   pandapower ter izvozi redko klasično AC Jacobijevo matriko in diagnostične
   rezultate.
-- `ureditev_meritev.py` pripravlja meritve P/Q/U, `ureditev_TAP_meritev.py` pa
+- `measurements/prepare_measurements.py` pripravlja meritve P/Q/U,
+  `measurements/prepare_tap_measurements.py` pa
   diskretne položaje regulatorjev. Ločeni sta namenoma, ker imata različna
   pravila prepoznavanja, validacije in izvoza.
 - Vse knjižnice so navedene v enem `requirements.txt`.

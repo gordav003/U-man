@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-# The settings below intentionally match Reactive_Power_Analysis.py.
+# The settings below intentionally match reactive_power_analysis.py.
 QUALITY_FILTER = True
 INCLUDE_MULTI_VOLTAGE_TRANSFORMERS = False
 MV_VOLTAGE_KV_CANDIDATES = [10, 20, 35]
@@ -20,9 +20,9 @@ VALUES_ARE_IN_KILO = False
 # data outage from creating a false peak. Use --min-coverage 0 to disable it.
 DEFAULT_MIN_COVERAGE = 0.95
 DEFAULT_TOP_COUNT = 20
-DEFAULT_PLOT_NAME = "Reactive_Power_Peak_Urejena_Vsota.svg"
+DEFAULT_PLOT_NAME = "reactive_power_peak_ranked_total.svg"
 DEFAULT_EVENT_THRESHOLD_MVAR = 160.0
-DEFAULT_EVENTS_DIR_NAME = "Reactive_Power_Events_150MVAr"
+DEFAULT_EVENTS_DIR_NAME = "reactive_power_events_150_mvar"
 EVENT_SUMMARY_COLUMNS = [
     "event",
     "start",
@@ -121,7 +121,7 @@ def find_col(df: pd.DataFrame, candidates):
 
 
 def parse_meta_from_filename(path: Path):
-    """Parse transformer metadata exactly as Reactive_Power_Analysis.py does."""
+    """Parse transformer metadata exactly as reactive_power_analysis.py does."""
     parts = path.stem.split("_")
     if len(parts) < 4 or parts[0] != "TR":
         return None
@@ -191,7 +191,7 @@ def build_110_mv_candidates(all_files):
 
 
 def read_transformer_q(path: Path):
-    """Read and clean time/Q using the rules from Reactive_Power_Analysis.py."""
+    """Read and clean time/Q using the rules from reactive_power_analysis.py."""
     df = pd.read_parquet(path)
     time_col = find_col(
         df, ["time", "cas", "systime", "systime(UTC+1)", "period_start"]
@@ -410,14 +410,14 @@ def plot_ordered_reactive_power(
     colors = ["#2f6f9f" if value < 0 else "#d9822b" for value in ordered["Q_MVAr"]]
     ax.bar(ordered["RTP"], ordered["Q_MVAr"], color=colors, width=0.8)
     ax.axhline(0, color="black", linewidth=0.8)
-    ax.set_xlabel("RTP")
-    ax.set_ylabel("Vsota jalove moči Q [MVAr]")
+    ax.set_xlabel("Substation")
+    ax.set_ylabel("Q / MVAr")
     title = (
-        "Urejena vsota jalove moči po RTP\n"
-        f"Sistemska konica: {pd.Timestamp(peak_time)}"
+        "Ranked total reactive power by substation\n"
+        f"System peak: {pd.Timestamp(peak_time)}"
     )
     if event_period is not None:
-        title += f"\nDogodek: {event_period[0]} – {event_period[1]}"
+        title += f"\nEvent: {event_period[0]} – {event_period[1]}"
     ax.set_title(title)
     ax.grid(axis="y", alpha=0.3)
     ax.tick_params(axis="x", labelrotation=60)

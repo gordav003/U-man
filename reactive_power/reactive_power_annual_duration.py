@@ -11,7 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from Reactive_Power_Peak import build_110_mv_candidates, build_q_matrix
+try:
+    from .reactive_power_peak import build_110_mv_candidates, build_q_matrix
+except ImportError:  # Support direct execution from this directory.
+    from reactive_power_peak import build_110_mv_candidates, build_q_matrix
 
 
 DEFAULT_YEAR = 2025
@@ -75,7 +78,7 @@ def parse_arguments() -> argparse.Namespace:
         default=DEFAULT_MIN_COVERAGE,
         help=(
             "Najmanjsi zahtevani delez razpolozljivih meritev "
-            f"transformatorjev (privzeto: {DEFAULT_MIN_COVERAGE:.0%})."
+            f"transformatorjev (privzeto: {DEFAULT_MIN_COVERAGE:.0%}%)."
         ),
     )
     parser.add_argument(

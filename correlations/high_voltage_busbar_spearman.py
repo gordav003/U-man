@@ -3,7 +3,8 @@ from __future__ import annotations
 """Spearmanova korelacija 15-minutnih sprememb napetosti VN zbiralk.
 
 Zbiralka je v tej analizi definirana kot kombinacija lokacije RTP in
-napetostnega nivoja (110, 220 ali 400 kV). Vsak fizicni transformator je
+napetostnega nivoja (110, 220 ali 400 kV), za katero obstaja dovolj veljavnih
+napetostnih meritev. Vsak fizicni transformator je
 uporabljen samo na najvisjem VN-nivoju, ki je zanj prisoten v podatkih. Tako je
 na primer 220/110-kV transformator upostevan samo na 220 kV, 400/110-kV
 transformator pa samo na 400 kV. Napetost zbiralke v posameznem trenutku je
@@ -20,7 +21,7 @@ ne zdruzijo v isti koeficient.
 
 Privzeti zagon iz korena projekta:
 
-    python U-man/Korelacija_VN_zbiralk_Spearman.py
+    python -m correlations.high_voltage_busbar_spearman
 
 Potrebne knjiznice: polars, numpy, scipy in matplotlib.
 """
@@ -44,6 +45,9 @@ from scipy.stats import ConstantInputWarning, spearmanr
 
 
 HV_LEVELS_KV = (110, 220, 400)
+# Znani kanali, katerih vrednosti so stevilcno videti smiselne, vendar meritve
+# niso veljavne za korelacijsko analizo.
+EXCLUDED_LOCATIONS = {"LENART"}
 VALID_U_MIN_PU = 0.5
 VALID_U_MAX_PU = 1.5
 DELTA_MINUTES = 15
@@ -179,6 +183,12 @@ def load_busbar_voltages(parquet_path: Path) -> pl.DataFrame:
         .filter(pl.col("napetost_kv").is_in(HV_LEVELS_KV))
         .filter(pl.col("lokacija_od").is_not_null())
         .filter(pl.col("lokacija_od").str.strip_chars() != "")
+        .filter(
+            ~pl.col("lokacija_od")
+            .str.strip_chars()
+            .str.to_uppercase()
+            .is_in(EXCLUDED_LOCATIONS)
+        )
         .with_columns(
             pl.col("objekt")
             .fill_null(pl.col("component_id"))
@@ -309,6 +319,29 @@ def ordered_busbars(busbar_voltages: pl.DataFrame) -> list[str]:
     )
 
 
+def eligible_busbars_for_segment(
+    segment_voltages: pl.DataFrame,
+    changes: pl.DataFrame,
+    min_pair_points: int,
+) -> tuple[list[str], pl.DataFrame, pl.DataFrame]:
+    """Obdrzi samo zbiralke z dovolj veljavnimi 15-minutnimi spremembami U."""
+    eligible = (
+        changes.group_by("zbiralka")
+        .agg(pl.col("dU_kV").is_finite().sum().alias("n_veljavnih_dU"))
+        .filter(pl.col("n_veljavnih_dU") >= min_pair_points)
+        .select("zbiralka")
+    )
+    filtered_voltages = segment_voltages.join(
+        eligible, on="zbiralka", how="inner"
+    )
+    filtered_changes = changes.join(eligible, on="zbiralka", how="inner")
+    return (
+        ordered_busbars(filtered_voltages),
+        filtered_voltages,
+        filtered_changes,
+    )
+
+
 def wide_change_matrix(
     changes: pl.DataFrame, busbars: list[str]
 ) -> tuple[list, np.ndarray]:
@@ -421,7 +454,7 @@ def draw_heatmap(
         aspect="equal",
     )
     ax.set_title(
-        "Spearmanova korelacija 15-minutnih sprememb napetosti VN zbiralk",
+        "Spearman correlation of 15-minute HV busbar voltage changes",
         fontsize=max(12, font_size * 2.2),
         color="#20252B",
         pad=18,
@@ -429,8 +462,8 @@ def draw_heatmap(
     ax.text(
         0,
         1.012,
-        "dU(t) = U(t + 15 min) - U(t); VN nivoji 110, 220 in 400 kV; "
-        f"zvezni segment: {period_label}",
+        "ΔU(t) = U(t + 15 min) - U(t); HV levels 110, 220 and 400 kV; "
+        f"continuous segment: {period_label}",
         transform=ax.transAxes,
         fontsize=max(8, font_size * 1.45),
         color="#5B6470",
@@ -471,10 +504,10 @@ def draw_heatmap(
                     )
 
     colorbar = fig.colorbar(image, ax=ax, fraction=0.025, pad=0.012)
-    colorbar.set_label("Spearmanov koeficient", color="#20252B")
+    colorbar.set_label("Spearman coefficient", color="#20252B")
     colorbar.set_ticks([-1, -0.5, 0, 0.5, 1])
-    ax.set_xlabel("Zbiralka")
-    ax.set_ylabel("Zbiralka")
+    ax.set_xlabel("ΔU / kV")
+    ax.set_ylabel("ΔU / kV")
     fig.tight_layout()
     fig.savefig(png_path, bbox_inches="tight")
     fig.savefig(svg_path, bbox_inches="tight")
@@ -502,6 +535,8 @@ def main() -> None:
 
     busbar_voltages = load_busbar_voltages(input_path)
     busbars = ordered_busbars(busbar_voltages)
+    if not busbars:
+        raise ValueError("V vhodnih podatkih ni RTP z veljavnimi VN napetostmi.")
     segments = find_continuous_segments(
         busbar_voltages,
         max_gap_minutes=args.max_gap_minutes,
@@ -530,7 +565,21 @@ def main() -> None:
         segment_dir.mkdir(parents=True, exist_ok=True)
         segment_voltages = rows_in_segment(busbar_voltages, segment)
         changes = exact_15_minute_changes(segment_voltages)
-        times, values = wide_change_matrix(changes, busbars)
+        segment_busbars, segment_voltages, changes = eligible_busbars_for_segment(
+            segment_voltages, changes, args.min_pair_points
+        )
+        if not segment_busbars:
+            (segment_dir / "izracun_povzetek.txt").write_text(
+                "V segmentu ni RTP z dovolj veljavnimi napetostnimi meritvami.\n",
+                encoding="utf-8",
+            )
+            print(
+                f"Segment {segment.number}/{len(segments)} preskocen: "
+                "ni RTP z dovolj veljavnimi napetostmi."
+            )
+            continue
+
+        times, values = wide_change_matrix(changes, segment_busbars)
         correlation, pair_counts = spearman_matrix(values, args.min_pair_points)
         metadata = build_metadata(segment_voltages, changes)
 
@@ -540,12 +589,12 @@ def main() -> None:
         png_path = segment_dir / "spearman_heatmap_dU_15min.png"
         svg_path = segment_dir / "spearman_heatmap_dU_15min.svg"
 
-        write_square_csv(correlation_path, busbars, correlation)
-        write_square_csv(counts_path, busbars, pair_counts, integer=True)
+        write_square_csv(correlation_path, segment_busbars, correlation)
+        write_square_csv(counts_path, segment_busbars, pair_counts, integer=True)
         metadata.write_csv(metadata_path, separator=";", include_bom=True)
         draw_heatmap(
             correlation,
-            busbars,
+            segment_busbars,
             png_path,
             svg_path,
             args.annotate_max_busbars,
@@ -553,7 +602,7 @@ def main() -> None:
         )
 
         finite_off_diagonal = correlation[
-            ~np.eye(len(busbars), dtype=bool) & np.isfinite(correlation)
+            ~np.eye(len(segment_busbars), dtype=bool) & np.isfinite(correlation)
         ]
         summary_lines = [
             "SPEARMANOVA KORELACIJA VN ZBIRALK - ZVEZNI SEGMENT",
@@ -561,7 +610,7 @@ def main() -> None:
             f"Casovnih tock segmenta: {segment.n_timestamps}",
             f"Casov z vsaj eno tocno 15-minutno razliko: {len(times)}",
             f"Minimalno skupnih razlik na par: {args.min_pair_points}",
-            f"Stevilo zbiralk: {len(busbars)}",
+            f"Stevilo RTP/zbiralk z veljavnimi napetostmi: {len(segment_busbars)}",
             f"Veljavnih izven-diagonalnih koeficientov: "
             f"{finite_off_diagonal.size}",
             "Agregacija zbiralke: mediana veljavnih napetosti transformatorjev",

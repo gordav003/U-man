@@ -54,7 +54,7 @@ python -m compileall -q .
 Za spremembe prikazovalnika Parquet zaženi tudi:
 
 ```powershell
-python Parquet_Plotter.py --smoke-test
+python parquet_plotter.py --smoke-test
 ```
 
 Analize, ki potrebujejo merilne datoteke, preveri na omejenem časovnem izseku.
@@ -64,7 +64,7 @@ V PR zapiši uporabljeni ukaz in rezultat, vendar ne objavljaj zaupnih podatkov.
 
 - `README.md` opisuje namen projekta, namestitev in uporabo analiz.
 - `requirements.txt` je enoten seznam Python odvisnosti.
-- `voltage_data.py` vsebuje skupno odkrivanje in branje napetostnih podatkov.
+- `voltage/voltage_data.py` vsebuje skupno odkrivanje in branje napetostnih podatkov.
 - `continuous_segments.py` vsebuje skupna pravila za zvezne časovne segmente.
-- Analitične skripte ostanejo v korenu, dokler projekt ne dobi paketne
-  strukture; novo skupno logiko izloči v ponovno uporaben modul.
+- Analitične skripte so razdeljene v pakete `correlations`, `measurements`,
+  `reactive_power` in `voltage`; novo skupno logiko izloči v ponovno uporaben modul.
