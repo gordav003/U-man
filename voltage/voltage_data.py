@@ -8,8 +8,8 @@ import re
 import polars as pl
 
 
-DEFAULT_START = "2025-04-01"
-DEFAULT_END = "2025-04-20"
+DEFAULT_START = "2024-12-30"
+DEFAULT_END = "2025-10-19"
 DEFAULT_MAX_GAP = timedelta(hours=2)
 VALID_U_MIN_PU = 0.5
 VALID_U_MAX_PU = 1.5

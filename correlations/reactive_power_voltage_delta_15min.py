@@ -716,8 +716,8 @@ def plot_scatter_regression(
 
     axis.axhline(0.0, linewidth=0.9, alpha=0.55)
     axis.axvline(0.0, linewidth=0.9, alpha=0.55)
-    axis.set_xlabel(f"ΔQ ({change_minutes} min) / MVAr", fontsize=11)
-    axis.set_ylabel(f"ΔU ({change_minutes} min) / kV", fontsize=11)
+    axis.set_xlabel("dQ/MVAr", fontsize=16, fontweight="bold", labelpad=10)
+    axis.set_ylabel("dU/kV", fontsize=16, fontweight="bold", labelpad=10)
     apply_axis_style(axis)
 
     annotation = (

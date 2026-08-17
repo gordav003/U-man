@@ -453,22 +453,6 @@ def draw_heatmap(
         interpolation="nearest",
         aspect="equal",
     )
-    ax.set_title(
-        "Spearman correlation of 15-minute HV busbar voltage changes",
-        fontsize=max(12, font_size * 2.2),
-        color="#20252B",
-        pad=18,
-    )
-    ax.text(
-        0,
-        1.012,
-        "ΔU(t) = U(t + 15 min) - U(t); HV levels 110, 220 and 400 kV; "
-        f"continuous segment: {period_label}",
-        transform=ax.transAxes,
-        fontsize=max(8, font_size * 1.45),
-        color="#5B6470",
-        va="bottom",
-    )
     positions = np.arange(n)
     ax.set_xticks(positions)
     ax.set_yticks(positions)
@@ -503,11 +487,12 @@ def draw_heatmap(
                         color=text_color,
                     )
 
-    colorbar = fig.colorbar(image, ax=ax, fraction=0.025, pad=0.012)
-    colorbar.set_label("Spearman coefficient", color="#20252B")
+    colorbar = fig.colorbar(image, ax=ax, fraction=0.05, pad=0.025)
     colorbar.set_ticks([-1, -0.5, 0, 0.5, 1])
-    ax.set_xlabel("ΔU / kV")
-    ax.set_ylabel("ΔU / kV")
+    colorbar.ax.tick_params(labelsize=max(14, font_size * 1.8), width=1.2)
+    colorbar.outline.set_linewidth(1.2)
+    ax.set_xlabel("dU/kV", fontsize=max(18, font_size * 2.4), fontweight="bold", labelpad=14)
+    ax.set_ylabel("dU/kV", fontsize=max(18, font_size * 2.4), fontweight="bold", labelpad=14)
     fig.tight_layout()
     fig.savefig(png_path, bbox_inches="tight")
     fig.savefig(svg_path, bbox_inches="tight")
