@@ -10,6 +10,15 @@ Power systems are undergoing a rapid transformation driven by increasing renewab
 
 The research represented in this repository focuses on identifying and analysing operating conditions in which reactive power exchange, reverse active-power flows, and low network loading contribute to voltage-control problems.
 
+The repository contains Python workflows for:
+
+- preparing SCADA active-power, reactive-power, voltage, and transformer-tap measurements;
+- analysing voltage and reactive-power conditions at several voltage levels;
+- detecting critical events and ranking the contribution of individual substations;
+- calculating Pearson and Spearman correlations on continuous measurement segments;
+- evaluating reactive-power compensation scenarios; and
+- interactively exploring prepared Parquet measurements.
+
 ## Motivation
 
 Lightly loaded high-voltage and sub-transmission networks can produce substantial capacitive reactive power and elevated voltages. At the same time, high generation from distributed energy resources may cause reverse power flows from distribution networks towards the transmission system.
@@ -103,44 +112,66 @@ Further information about the wider project is available on the official CRESYM 
 
 ## Installation
 
-Python 3.10 or newer is recommended. Create and activate a virtual environment,
-then install the required packages:
+Python 3.10 or newer is recommended. Clone the repository, create a virtual
+environment, and install the dependencies:
 
 ```powershell
+git clone https://github.com/gordav003/U-man.git
+cd U-man
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
+On Linux or macOS, activate the environment with:
+
+```bash
+source .venv/bin/activate
+```
+
 Raw SCADA measurements and generated results should remain outside the repository
 because they may be large or confidential.
 
-The `powerfactory_to_pandapower_jacobian.py` workflow additionally requires a
-licensed DIgSILENT PowerFactory installation and must run with the Python
-environment supplied or supported by PowerFactory. The proprietary
-`powerfactory` module is therefore not listed in `requirements.txt`.
+Most command-line tools describe all available options through `--help`:
+
+```powershell
+python -m reactive_power.reactive_power_peak --help
+```
 
 ## Repository tools
 
-| Area | Main scripts | Purpose |
+| Area | Script | Purpose |
 | --- | --- | --- |
-| Data preparation | `measurements/prepare_*.py` | Normalize SCADA P/Q/U measurements and transformer tap positions. |
-| Voltage analysis | `voltage/*.py` | Analyze voltage levels, high-voltage events, annual duration curves, and shared voltage data. |
-| Reactive power | `reactive_power/*.py` | Analyze reactive-power behavior, peaks, annual duration, and compensation scenarios. |
-| Correlation | `correlations/*.py`, `continuous_segments.py` | Calculate segmented P/Q/U and cross-voltage-level correlations. |
-| Interactive plotting | `parquet_plotter.py` | Build and export plots from prepared Parquet components. |
-| Network model | `powerfactory_to_pandapower_jacobian.py` | Convert a PowerFactory model, solve or reconstruct the operating point, and export the sparse classical AC Jacobian. |
+| Data preparation | `measurements/prepare_measurements.py` | Inspect, normalize, and export SCADA P/Q/U measurements to wide or component-based Parquet files. |
+| Data preparation | `measurements/prepare_tap_measurements.py` | Prepare transformer tap measurements and their metadata, catalogue, and component files. |
+| Voltage | `voltage/high_voltage_analysis.py` | Find and rank high-voltage operating moments at 110, 220, and 400 kV. |
+| Voltage | `voltage/voltage_annual_duration.py` | Create annual voltage duration curves by voltage level. |
+| Reactive power | `reactive_power/reactive_power_analysis.py` | Analyse reactive-power limits and deviations for each 110/MV substation. |
+| Reactive power | `reactive_power/reactive_power_peak.py` | Find system-wide capacitive peaks, rank RTP contributions, and identify events. |
+| Reactive power | `reactive_power/reactive_power_annual_duration.py` | Create an annual duration curve of total 110/MV reactive-power exchange. |
+| Reactive power | `reactive_power/reactive_power_compensation_gui.py` | Compare measured operation with user-defined capacitive or inductive compensation. |
+| Correlation | `correlations/reactive_power_voltage_delta_15min.py` | Calculate Q-U correlations for exact 15-minute changes by continuous segment. |
+| Correlation | `correlations/voltage_reactive_power_110_mv_*.py` | Calculate Pearson or Spearman dU-dQ matrices, including a day/night variant. |
+| Correlation | `correlations/voltage_active_power_110_mv_spearman.py` | Calculate segmented Spearman dU-dP matrices. |
+| Correlation | `correlations/active_reactive_power_110_mv_spearman.py` | Calculate segmented Spearman dP-dQ matrices. |
+| Correlation | `correlations/high_voltage_busbar_spearman.py` | Compare voltage changes across high-voltage busbars. |
+| Correlation | `correlations/powerfactory_voltage_reactive_power_correlation.py` | Analyse U-Q correlations in exported PowerFactory result files. |
+| Interactive plotting | `parquet_plotter.py` | Select, combine, display, and export series from prepared Parquet components. |
 
-Generated measurements, plots, Jacobian matrices, pandapower networks, and
-PowerFactory project files are intentionally excluded through `.gitignore`.
+Shared discovery and segmentation logic is implemented in
+`voltage/voltage_data.py` and `continuous_segments.py`.
+
+Generated measurements, plots, analysis results, and PowerFactory project files
+are intentionally excluded through `.gitignore`.
 
 ## Usage
 
 Prepare the P/Q/U measurements from a directory containing SCADA CSV files:
 
 ```powershell
-python -m measurements.prepare_measurements "C:\path\to\scada-data" --mode normalize
-python -m measurements.prepare_measurements "C:\path\to\scada-data" --mode component_files
+python -m measurements.prepare_measurements `
+  "C:\path\to\scada-data" `
+  --mode component_files
 ```
 
 Prepare transformer tap measurements:
@@ -156,10 +187,28 @@ python -m reactive_power.reactive_power_analysis `
   "C:\path\to\scada-data\urejeno\Uman_parquet\component_files"
 ```
 
-All scripts accept `--help`. The preprocessing scripts write to a directory under
-the input directory by default; use `--output-dir` to select another location.
-`reactive_power_analysis.py` saves charts only as editable vector SVG files.
-Analytical results remain available in the console; CSV files are not generated.
+Find the strongest system-wide capacitive event and rank the participating RTPs:
+
+```powershell
+python -m reactive_power.reactive_power_peak `
+  "C:\path\to\scada-data\urejeno\Uman_parquet\component_files"
+```
+
+Create annual reactive-power and voltage duration curves:
+
+```powershell
+python -m reactive_power.reactive_power_annual_duration `
+  --component-dir "C:\path\to\component_files" `
+  --year 2025
+
+python -m voltage.voltage_annual_duration `
+  --component-dir "C:\path\to\component_files" `
+  --year 2025
+```
+
+The preprocessing scripts write below the input directory by default. Analysis
+scripts either use their documented default output directory or accept an
+explicit `--output-dir` or output-file option.
 
 ## Interactive RTP reactive power compensation
 
@@ -226,15 +275,39 @@ variable segment, a separate directory is created containing measurements, chang
 and plots. Segments that are too short or constant remain documented as
 skipped.
 
+The related 110/MV workflows use the same principle: time gaps start new
+segments, exact 15-minute pairs are analysed without interpolation, and results
+are exported as matrices, summaries, and plots. For example:
+
+```powershell
+python -m correlations.voltage_reactive_power_110_mv_spearman `
+  --input "C:\path\to\transformers_wide.parquet" `
+  --output-dir "C:\path\to\results"
+```
+
+## Repository structure
+
+```text
+U-man/
+|-- measurements/       SCADA and transformer-tap preparation
+|-- voltage/            voltage-event and duration analyses
+|-- reactive_power/     reactive-power, peak, and compensation analyses
+|-- correlations/       segmented P/Q/U correlation workflows
+|-- continuous_segments.py
+|-- parquet_plotter.py
+|-- requirements.txt
+`-- README.md
+```
+
+The layout is intentionally small: analysis families are grouped by topic,
+while reusable helpers remain close to the workflows that use them.
+
 ## Code organization
 
 - `voltage/voltage_data.py` contains shared element discovery, topology handling, and reading of
   voltage series for voltage analyses.
 - `continuous_segments.py` provides the shared segmentation implementation for Q–U and
   400/110-kV correlation analysis.
-- `powerfactory_to_pandapower_jacobian.py` converts a PowerFactory model to
-  pandapower and exports the sparse classical AC Jacobian matrix and diagnostic
-  results.
 - `measurements/prepare_measurements.py` prepares P/Q/U measurements, while
   `measurements/prepare_tap_measurements.py` prepares
   discrete tap positions. They are intentionally separate because they use different
@@ -246,3 +319,6 @@ skipped.
 Rules for branches, commits, pull requests, and basic checks are described in
 [`CONTRIBUTING.md`](CONTRIBUTING.md). The `main` branch is the only permanent branch;
 completed development branches are deleted after merging.
+
+Every push and pull request to `main` runs a Python syntax check on Python 3.10
+and 3.12 through GitHub Actions.

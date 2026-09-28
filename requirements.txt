@@ -1,8 +1,6 @@
 matplotlib
-networkx
 numpy
 pandas
-pandapower
 polars
 pyarrow
 scipy
