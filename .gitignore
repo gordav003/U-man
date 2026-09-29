@@ -23,6 +23,16 @@ Jacobian_exports/
 *.parquet
 *.npz
 
+# Local tabular measurements and exported results (including files outside output folders)
+*.csv
+*.xlsx
+*.xls
+
+# Only reviewed, synthetic test fixtures may be committed here.
+!tests/fixtures/**/*.csv
+!tests/fixtures/**/*.xlsx
+!tests/fixtures/**/*.xls
+
 # Local PowerFactory and analysis exports
 *.pfd
 *.pfdz

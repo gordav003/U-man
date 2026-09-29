@@ -32,6 +32,26 @@ on GitHub.
 Do not commit measurement data, credentials, local results, or virtual
 environments. These artifacts must remain covered by `.gitignore`.
 
+### Tabular data and test fixtures
+
+Keep raw SCADA measurements, local CSV/Excel files, generated exports, and
+operational results outside the repository. The `.gitignore` excludes `.csv`,
+`.xlsx`, and `.xls` files by default, including files saved outside the usual
+output directories.
+
+If a test needs a small tabular fixture, put it under `tests/fixtures/`.
+This is the only path exempted for those three extensions. Create the fixture
+from invented, synthetic values and review its contents, column names,
+metadata, and filenames before committing. Do not copy or anonymize real
+operational measurements into a fixture. Keep generated outputs out of
+`tests/fixtures/` and save them outside the repository.
+
+Before committing, inspect `git status` and the staged diff. Ignore rules
+do not affect files already tracked by Git; check any tracked tabular files
+with `git ls-files '*.csv' '*.xlsx' '*.xls'` and review them separately
+before deciding whether to remove them from tracking. Never force-add a
+measurement or export to bypass the ignore rules.
+
 ## Commits and Pull Requests
 
 Keep the title short and use the imperative mood, for example:
